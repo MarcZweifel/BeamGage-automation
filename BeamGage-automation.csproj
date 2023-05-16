@@ -22,5 +22,13 @@
       <SpecificVersion>False</SpecificVersion>
       <HintPath>C:\Program Files\Spiricon\BeamGage Professional\Spiricon.TreePattern.dll</HintPath>
     </Reference>
+    <Reference Include="Aerotech.A3200">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>lib\Aerotech\Aerotech.A3200.dll</HintPath>
+    </Reference>
+    <Reference Include="Aerotech.Common">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>lib\Aerotech\Aerotech.Common.dll</HintPath>
+    </Reference>
   </ItemGroup>
 </Project>

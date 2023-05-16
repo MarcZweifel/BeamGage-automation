@@ -1,6 +1,6 @@
 ﻿using System;
 using Spiricon.Automation;
-using System.Linq;
+using Aerotech.A3200;
 
 namespace BGCSharpExample
 {
@@ -23,7 +23,7 @@ namespace BGCSharpExample
         {
             Console.WriteLine("Press enter to exit.\n");
             // Start BeamGage Automation client
-            _bg = new AutomatedBeamGage("ClientOne", false);
+            _bg = new AutomatedBeamGage("ClientOne", true);
 
             
 
@@ -39,3 +39,5 @@ namespace BGCSharpExample
         }
     }
 }
+
+// TODO Aerotech program run in second thread
