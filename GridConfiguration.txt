@@ -1,0 +1,5 @@
+NumU = 65
+NumV = 65
+DeltaU = 0.46875
+DeltaV = 0.46875
+MeasureDuration = 10.0

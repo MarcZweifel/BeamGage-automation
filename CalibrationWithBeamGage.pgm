@@ -1,9 +1,0 @@
-DVAR $MeasureActive
-
-// Variable to communicate with BeamGage.
-// DON'T RENAME IT!!!
-$MeasureActive = False
-
-
-
-G90 G1 X 60 F1
