@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Threading;
-using System.Configuration;
+using System.Collections.Generic;
+using System.IO;
+using System.Text;
 using Spiricon.Automation;
 using Aerotech.A3200;
 using Aerotech.A3200.Commands;
@@ -14,6 +16,7 @@ namespace BeamGageAutomation
         static void Main(string[] args)
         {
             // Connect to the two software APIs using custom connector classes.
+            Console.ReadLine();
             A3200Connector A3200Connection = new A3200Connector();
             A3200Connection.Connect();
             BeamGageConnector BGConnection = new BeamGageConnector();
@@ -140,39 +143,98 @@ namespace BeamGageAutomation
         public CalibrationProgram(BeamGageConnector BeamGageConnector, A3200Connector AerotechConnector)
         {
             ///Constructor reads the grid and measurement parameters from the configuration file.
-            NumU = GetGridVariable<int>("NumU");
-            NumV = GetGridVariable<int>("NumV");
-            DeltaU = GetGridVariable<double>("DeltaU");
-            DeltaV = GetGridVariable<double>("DeltaV");
-            MeasureDuration = GetGridVariable<double>("MeasureDuration");
+            string[,] GridVariables = GetGridVariables();
+            NumU = GetVariable<int>("NumU", GridVariables);
+            NumV = GetVariable<int>("NumV", GridVariables);
+            DeltaU = GetVariable<double>("DeltaU", GridVariables);
+            DeltaV = GetVariable<double>("DeltaV", GridVariables);
+            MeasureDuration = GetVariable<double>("MeasureDuration", GridVariables);
             Results = new double[2, NumU, NumV];
             Aerotech = AerotechConnector;
             BeamGage = BeamGageConnector;
         }
 
-        private dynamic GetGridVariable<T>(string name)
+        private string[,] GetGridVariables()
         {
             /**
-            Reads Variable "name" from App.config and returns it as type <T>.
-            <T> can be either int or double. Otherwise variable is returned as a string.
+            Reads the lines contained in < and > in GridConfiguration.txt and reads the variables from them.
             **/
-            // TODO Change to system with .txt files.
-            string result = "";
-            Console.WriteLine(name + " is " + result);
-            if (typeof(T) == typeof(int))
+
+            // Dynamic lists for line reading
+            List<string> lines = new List<string>();
+            
+            using (FileStream fs = File.OpenRead("GridConfiguration.txt"))
             {
-                return Convert.ToInt32(result);
+                List<char> line = new List<char>();
+                bool ReadLine = false;
+                
+                // Iterate over the whole file stream
+                while (fs.Position != fs.Length)
+                {
+                    char character = Convert.ToChar(fs.ReadByte());
+                    // Beginning of line
+                    if (character=='<')
+                    {
+                        ReadLine = true;
+                        continue;
+                    }
+                    // End of line
+                    else if (character=='>')
+                    {
+                        ReadLine = false;
+                        lines.Add(new string(line.ToArray()));
+                        line.Clear();
+                        continue;
+                    }
+                    // Add read character to line
+                    if (ReadLine)
+                    {
+                        line.Add(character);
+                    }
+                }
             }
-            else if (typeof(T) == typeof(double))
+            string [,] result = new string[lines.Capacity,2];
+            for (int i=0; i<lines.Count; i++)
             {
-                return Convert.ToDouble(result);
+                string[] temp = lines[i].Split('=');
+                result[i,0] = temp[0].Trim();
+                result[i,1] = temp[1].Trim();
+
+            }
+            return result;
+        }
+    
+        private dynamic GetVariable<T>(string name, string[,] variables)
+        {
+            string result = "";
+            for (int i=0; i<variables.GetLength(0); i++)
+            {
+                if (variables[i,0] == name)
+                {
+                    result = variables[i,1];
+                    break;
+                }
+            }
+            
+            if (typeof(T)==typeof(int))
+            {
+                int temp = Convert.ToInt32(result);
+                Console.WriteLine(name + " is " + temp + " of type " + typeof(int));
+                return temp;
+            }
+            else if (typeof(T)==typeof(double))
+            {
+                double temp = Convert.ToDouble(result);
+                Console.WriteLine(name + " is " + temp + " of type " + typeof(double));
+                return temp;
             }
             else
             {
+                Console.WriteLine(name + " is " + result + " of type " + typeof(string));
                 return result;
             }
         }
-    
+        
         public void RunProgram()
         {
             Aerotech.SetZero();
