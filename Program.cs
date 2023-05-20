@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
@@ -16,9 +17,8 @@ namespace BeamGageAutomation
         static void Main(string[] args)
         {
             // Connect to the two software APIs using custom connector classes.
-            Console.ReadLine();
-            A3200Connector A3200Connection = new A3200Connector();
-            A3200Connection.Connect();
+            // A3200Connector A3200Connection = new A3200Connector();
+            // A3200Connection.Connect();
             BeamGageConnector BGConnection = new BeamGageConnector();
             BGConnection.Connect();
             
@@ -27,19 +27,20 @@ namespace BeamGageAutomation
             Console.WriteLine("The current location will be the zero point of the calibration.");
             Console.WriteLine("Type start to start the calibration and cancel to terminate the program.");
             
-            
             string answer = Console.ReadLine().ToLower();
             while (true)
             {
                 if (answer == "start")
                 {
                     // Start the calibration program
+                    
+                    BGConnection.Measure(2000);
                     break;
                 }
                 else if (answer == "cancel")
                 {
                     // Terminate the program
-                    A3200Connection.Disconnect();
+                    // A3200Connection.Disconnect();
                     BGConnection.Disconnect();
                     Environment.Exit(0);
                 }
@@ -50,9 +51,10 @@ namespace BeamGageAutomation
                     answer = Console.ReadLine().ToLower();
                 }
             }
-            CalibrationProgram Calibration = new CalibrationProgram(BGConnection, A3200Connection);
-            Calibration.RunProgram();
-            A3200Connection.Disconnect();
+            // CalibrationProgram Calibration = new CalibrationProgram(BGConnection, A3200Connection);
+            // Calibration.RunProgram();
+            // A3200Connection.Disconnect();
+            BGConnection.Disconnect();
 
         }
     }
@@ -64,27 +66,48 @@ namespace BeamGageAutomation
         **/
         // Declare the BeamGage Automation client
         private AutomatedBeamGage bgClient;
+        private bool MeasureOn = false;
+        private List<double> ResultX = new List<double>();
+        private List<double> ResultY = new List<double>();
 
         public void Connect()
         {
             ///Starts a new BeamGage automation client, lets user know over the console and shows the GUI.
             bgClient = new AutomatedBeamGage("ScannerCalibration", true);
+            new AutomationFrameEvents(bgClient.ResultsPriorityFrame).OnNewFrame += OnFrameFunction;
             Console.WriteLine("BeamGage connected.");
+        }
+        
+        private void OnFrameFunction()
+        {
+            if (MeasureOn)
+            {
+                ResultX.Add(bgClient.SpatialResults.CentroidX);
+                ResultY.Add(bgClient.SpatialResults.CentroidY);
+            }
         }
 
         public void Disconnect()
         {
             ///Shut down the BeamGage automation client.
             bgClient.Instance.Shutdown();
+            Console.WriteLine("BeamGage disconnected.");
         }
 
-        public void Measure(double SecondsDuration)
+        public void Measure(int MillisecondsDuration)
         {
             ///Controls the measurement routine. Duration is in seconds.
-            //TODO Implement measurement routine
+            //TODO Calculate and return mean & std. deviation, then clear result list.
             Console.WriteLine("Measurement started.");
-            Thread.Sleep(Convert.ToInt32(SecondsDuration)*1000);
+            MeasureOn = true;
+            Thread.Sleep(MillisecondsDuration);
+            MeasureOn = false;
             Console.WriteLine("Measurement ended.");
+            Console.WriteLine("X\t\t\t\tY");
+            for (int i=0; i<ResultX.Count; i++)
+            {
+                Console.WriteLine(ResultX[i] + "\t\t" + ResultY[i]);
+            }
         }
     }
 
