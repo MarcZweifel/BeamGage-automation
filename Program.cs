@@ -1,15 +1,10 @@
 ﻿using System;
 using System.Threading;
-using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.IO;
-using System.Text;
 using System.Linq;
 using Spiricon.Automation;
 using Aerotech.A3200;
-using Aerotech.A3200.Commands;
-using Aerotech.A3200.Variables;
-using Aerotech.A3200.Tasks;
 
 namespace BeamGageAutomation
 {
@@ -18,13 +13,16 @@ namespace BeamGageAutomation
         static void Main(string[] args)
         {
             // Connect to the two software APIs using custom connector classes.
-            // A3200Connector A3200Connection = new A3200Connector();
-            // A3200Connection.Connect();
+            A3200Connector A3200Connection = new A3200Connector();
+            A3200Connection.Connect();
             BeamGageConnector BGConnection = new BeamGageConnector();
             BGConnection.Connect();
             
-            Console.WriteLine("Set up the beam camera as usual.");
-            Console.WriteLine("Set grid parameters in App.config.");
+            Console.WriteLine("Set up the beam camera as usual.\n");
+
+            Console.WriteLine("Set grid parameters in GridConfiguration.txt.");
+            Console.WriteLine("Line format: <VariableName = value>\n");
+
             Console.WriteLine("The current location will be the zero point of the calibration.");
             Console.WriteLine("Type start to start the calibration and cancel to terminate the program.");
             
@@ -33,15 +31,12 @@ namespace BeamGageAutomation
             {
                 if (answer == "start")
                 {
-                    // Start the calibration program
-                    
-                    BGConnection.MeasurePosition(2000);
                     break;
                 }
                 else if (answer == "cancel")
                 {
                     // Terminate the program
-                    // A3200Connection.Disconnect();
+                    A3200Connection.Disconnect();
                     BGConnection.Disconnect();
                     Environment.Exit(0);
                 }
@@ -52,11 +47,18 @@ namespace BeamGageAutomation
                     answer = Console.ReadLine().ToLower();
                 }
             }
-            // CalibrationProgram Calibration = new CalibrationProgram(BGConnection, A3200Connection);
-            // Calibration.RunProgram();
-            // A3200Connection.Disconnect();
+            try
+            {
+                CalibrationProgram Calibration = new CalibrationProgram(BGConnection, A3200Connection);
+                Calibration.RunProgram();
+            }
+            finally
+            {
+                A3200Connection.Disconnect();
+                BGConnection.Disconnect();
+            }
+            A3200Connection.Disconnect();
             BGConnection.Disconnect();
-
         }
     }
 
@@ -124,8 +126,14 @@ namespace BeamGageAutomation
         public void Connect()
         {
             ///Connects to the A3200 controller.
+            while(!Controller.IsRunning)
+            {
+                Console.WriteLine("Start the Aerotech A3200 Software and initialize / reset the controller.");
+                Console.WriteLine("Press enter to continue.");
+                Console.ReadLine();
+            }
             controller = Controller.Connect();
-            controller.Commands.Motion.Linear(new string[] {"U", "V"}, new double[] {0, 0});
+            controller.Commands.Motion.Linear(new string[] {"U", "V"}, new double[] {0, 0}, 100);
             Console.WriteLine("Controller connected.");
         }
 
@@ -157,7 +165,7 @@ namespace BeamGageAutomation
         /**
         Class which contains the functionality of the Aerotech measurment program.
         **/
-        public double [,,] Results = new double[2, NumU, NumV];
+        public double [,,] Results;
         private static int NumU;
         private static int NumV;
         private static double DeltaU;
@@ -175,6 +183,7 @@ namespace BeamGageAutomation
             DeltaU = GetVariable<double>("MillimeterDeltaU", GridVariables);
             DeltaV = GetVariable<double>("MillimeterDeltaV", GridVariables);
             MeasureDuration = GetVariable<int>("MillisecondsMeasureDuration", GridVariables);
+            Results = new double[2, NumV, NumU];
             Aerotech = AerotechConnector;
             BeamGage = BeamGageConnector;
         }
@@ -263,6 +272,7 @@ namespace BeamGageAutomation
         {
             Aerotech.SetZero();
             double[] Reference = BeamGage.MeasurePosition(MeasureDuration);
+            Console.WriteLine("Reference: X = {0}, Y = {1}", Reference[0], Reference[1]);
             for (int i=0; i<NumV; i++)
             {
                 for (int j=0; j<NumU; j++)
@@ -278,21 +288,24 @@ namespace BeamGageAutomation
                     }
                     
                     int IdxV = i;
+                    Console.WriteLine("IdxV = {0}, IdxU = {1}", IdxV, IdxU);
                     if (IdxU==(NumU-1)/2 && IdxV==(NumV-1)/2)
                     {
                         // If current position is reference position don't measure again
-                        Results[0, IdxV, IdxV] = 0.0;
-                        Results[1, IdxV, IdxV] = 0.0;
+                        Results[0, IdxV, IdxU] = 0.0;
+                        Results[1, IdxV, IdxU] = 0.0;
                         continue;
                     }
+                    
                     double UCoord = (IdxU-(NumU-1)/2)*DeltaU;
                     double VCoord = ((NumV-1)/2-IdxV)*DeltaV;
                     Aerotech.MoveToAbs(UCoord, VCoord);
 
                     double[] Position = BeamGage.MeasurePosition(MeasureDuration);
+                    Console.WriteLine("Position: X = {0}, Y = {1}", Position[0], Position[1]);
 
-                    Results[0, IdxV, IdxV] = Position[0]-Reference[0];
-                    Results[1, IdxV, IdxV] = Position[1]-Reference[1];
+                    Results[0, IdxV, IdxU] = Position[0]-Reference[0];
+                    Results[1, IdxV, IdxU] = Position[1]-Reference[1];
                 }
             }
             ShowResult();
@@ -304,9 +317,9 @@ namespace BeamGageAutomation
             {
                 for (int j=0; j<NumU; j++)
                 {
-                    Console.Write("({0:F2}, {1:F2})", Results[0,i,j], Results[1,i,j]);
+                    Console.Write("({0:F2}, {1:F2})\t", Results[0,i,j], Results[1,i,j]);
                 }
-                Console.Write("\n");
+                Console.Write("\n\n");
             }
         }
     }
