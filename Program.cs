@@ -103,13 +103,10 @@ namespace BeamGageAutomation
             Thread.Sleep(MillisecondsDuration);
             MeasureOn = false;
             Console.WriteLine("Measurement ended.");
-            Console.WriteLine("X\t\t\t\tY");
-            for (int i=0; i<ResultX.Count; i++)
-            {
-                Console.WriteLine(ResultX[i] + "\t\t" + ResultY[i]);
-            }
+           
             double[] Result = {ResultX.Average(), ResultY.Average()};
-
+            Console.WriteLine("X = {0:F2}, Y = {1:F2}", Result[0], Result[1]);
+            
             ResultX.Clear();
             ResultY.Clear();
 
