@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using System.Linq;
 using Spiricon.Automation;
 using Aerotech.A3200;
 using Aerotech.A3200.Commands;
@@ -34,7 +35,7 @@ namespace BeamGageAutomation
                 {
                     // Start the calibration program
                     
-                    BGConnection.Measure(2000);
+                    BGConnection.MeasurePosition(2000);
                     break;
                 }
                 else if (answer == "cancel")
@@ -94,10 +95,9 @@ namespace BeamGageAutomation
             Console.WriteLine("BeamGage disconnected.");
         }
 
-        public void Measure(int MillisecondsDuration)
+        public double[] MeasurePosition(int MillisecondsDuration)
         {
             ///Controls the measurement routine. Duration is in seconds.
-            //TODO Calculate and return mean & std. deviation, then clear result list.
             Console.WriteLine("Measurement started.");
             MeasureOn = true;
             Thread.Sleep(MillisecondsDuration);
@@ -108,6 +108,12 @@ namespace BeamGageAutomation
             {
                 Console.WriteLine(ResultX[i] + "\t\t" + ResultY[i]);
             }
+            double[] Result = {ResultX.Average(), ResultY.Average()};
+
+            ResultX.Clear();
+            ResultY.Clear();
+
+            return Result;
         }
     }
 
@@ -154,12 +160,12 @@ namespace BeamGageAutomation
         /**
         Class which contains the functionality of the Aerotech measurment program.
         **/
-        public double [,,] Results;
+        public double [,,] Results = new double[2, NumU, NumV];
         private static int NumU;
         private static int NumV;
         private static double DeltaU;
         private static double DeltaV;
-        private static double MeasureDuration;
+        private static int MeasureDuration;
         private BeamGageConnector BeamGage;
         private A3200Connector Aerotech;
         
@@ -169,10 +175,9 @@ namespace BeamGageAutomation
             string[,] GridVariables = GetGridVariables();
             NumU = GetVariable<int>("NumU", GridVariables);
             NumV = GetVariable<int>("NumV", GridVariables);
-            DeltaU = GetVariable<double>("DeltaU", GridVariables);
-            DeltaV = GetVariable<double>("DeltaV", GridVariables);
-            MeasureDuration = GetVariable<double>("MeasureDuration", GridVariables);
-            Results = new double[2, NumU, NumV];
+            DeltaU = GetVariable<double>("MillimeterDeltaU", GridVariables);
+            DeltaV = GetVariable<double>("MillimeterDeltaV", GridVariables);
+            MeasureDuration = GetVariable<int>("MillisecondsMeasureDuration", GridVariables);
             Aerotech = AerotechConnector;
             BeamGage = BeamGageConnector;
         }
@@ -222,7 +227,6 @@ namespace BeamGageAutomation
                 string[] temp = lines[i].Split('=');
                 result[i,0] = temp[0].Trim();
                 result[i,1] = temp[1].Trim();
-
             }
             return result;
         }
@@ -261,6 +265,7 @@ namespace BeamGageAutomation
         public void RunProgram()
         {
             Aerotech.SetZero();
+            double[] Reference = BeamGage.MeasurePosition(MeasureDuration);
             for (int i=0; i<NumV; i++)
             {
                 for (int j=0; j<NumU; j++)
@@ -274,15 +279,39 @@ namespace BeamGageAutomation
                     {
                         IdxU = NumU-1-j;
                     }
+                    
                     int IdxV = i;
+                    if (IdxU==(NumU-1)/2 && IdxV==(NumV-1)/2)
+                    {
+                        // If current position is reference position don't measure again
+                        Results[0, IdxV, IdxV] = 0.0;
+                        Results[1, IdxV, IdxV] = 0.0;
+                        continue;
+                    }
                     double UCoord = (IdxU-(NumU-1)/2)*DeltaU;
                     double VCoord = ((NumV-1)/2-IdxV)*DeltaV;
                     Aerotech.MoveToAbs(UCoord, VCoord);
-                    BeamGage.Measure(2);
+
+                    double[] Position = BeamGage.MeasurePosition(MeasureDuration);
+
+                    Results[0, IdxV, IdxV] = Position[0]-Reference[0];
+                    Results[1, IdxV, IdxV] = Position[1]-Reference[1];
                 }
             }
+            ShowResult();
         }
     
+        public void ShowResult()
+        {
+            for (int i=0; i<NumV; i++)
+            {
+                for (int j=0; j<NumU; j++)
+                {
+                    Console.Write("({0:F2}, {1:F2})", Results[0,i,j], Results[1,i,j]);
+                }
+                Console.Write("\n");
+            }
+        }
     }
 
 }
