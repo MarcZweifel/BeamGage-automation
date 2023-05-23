@@ -28,7 +28,9 @@ namespace BeamGageAutomation
             Console.WriteLine("Set grid parameters in GridConfiguration.txt.");
             Console.WriteLine("Line format: <VariableName = value>\n");
 
-            // TODO Prompt user to specify export parameters
+            Console.WriteLine("Enter the filename for the exported calibration file.");
+            string Filename = Console.ReadLine();
+            Console.WriteLine("After completion, the CSV-file will be saved as " + Filename + ".csv on the desktop and can be imported to the Aerotech Calibration File Converter.\n" );
 
             Console.WriteLine("The current location will be the zero point of the calibration.");
             Console.WriteLine("Type start to start the calibration and cancel to terminate the program.");
@@ -62,14 +64,18 @@ namespace BeamGageAutomation
             {
                 CalibrationProgram Calibration = new CalibrationProgram(BGConnection, A3200Connection);
                 Calibration.RunProgram();
-                Export.ToCSV(Calibration.Results, "test_csv");
-                Export.ToNmark(Calibration.Results, "test_aerotech");
+                string FilenameAerotech = Filename + "_aerotech";
+                string FilenameCSV = Filename + "_CSV";
+                Export.ToNmark(Calibration.Results, FilenameAerotech);
+                Export.ToCSV(Calibration.Results, Calibration.IdealPositions, FilenameCSV);
             }
             finally
             {
                 // Disconnect from A3200 controller and BeamGage even when CalibrationProgram produced an error.
                 A3200Connection.Disconnect();
                 BGConnection.Disconnect();
+                Console.WriteLine("Press enter to close the program.");
+                Console.ReadLine();
             }
         }
     }
@@ -108,8 +114,8 @@ namespace BeamGageAutomation
             // Data collection switch is on -> Add centroid coordinates of the new frame to the results list.
             if (MeasureOn)
             {
-                ResultX.Add(bgClient.SpatialResults.CentroidX);
-                ResultY.Add(bgClient.SpatialResults.CentroidY);
+                ResultX.Add(bgClient.SpatialResults.CentroidX/1000); // in mm
+                ResultY.Add(bgClient.SpatialResults.CentroidY/1000);
             }
         }
 
@@ -132,7 +138,7 @@ namespace BeamGageAutomation
             Console.WriteLine("Measurement ended.");
            
             double[] Result = {ResultX.Average(), ResultY.Average()};
-            Console.WriteLine("Measured position [μm]: U = {0:F2}, V = {1:F2}", Result[0], Result[1]);
+            Console.WriteLine("Measured position [mm]: U = {0:F5}, V = {1:F5}", Result[0], Result[1]);
             
             ResultX.Clear();
             ResultY.Clear();
@@ -204,6 +210,8 @@ namespace BeamGageAutomation
         Class which contains the functionality of the Aerotech measurement program.
         **/
         public double [,,] Results; // Declare result matrix as public class property
+
+        public double [,,] IdealPositions; // Declare matrix for ideal positions
         
 
         // Declare geometric variables as class properties
@@ -234,6 +242,7 @@ namespace BeamGageAutomation
             DeltaV = GetVariable<double>("MillimeterDeltaV", GridVariables);
             MeasureDuration = GetVariable<int>("MillisecondsMeasureDuration", GridVariables);
             Results = new double[2, NumV, NumU];
+            IdealPositions = new double[2, NumV, NumU];
             Aerotech = AerotechConnector;
             BeamGage = BeamGageConnector;
         }
@@ -358,19 +367,23 @@ namespace BeamGageAutomation
                         // If current position is reference position don't measure again
                         Results[0, IdxV, IdxU] = 0.0;
                         Results[1, IdxV, IdxU] = 0.0;
-                        Console.WriteLine("Reference position [μm]: dU = 0.00, dV = 0.00\n");
+                        Console.WriteLine("Reference position [mm]: dU = 0.00, dV = 0.00\n");
                         continue;
                     }
                     
                     double UCoord = (IdxU-(NumU-1)/2)*DeltaU; // Measure positions in optical coordinates
                     double VCoord = ((NumV-1)/2-IdxV)*DeltaV;
+
+                    IdealPositions[0, IdxV, IdxU] = UCoord;
+                    IdealPositions[1, IdxV, IdxU] = VCoord;
+
                     Aerotech.MoveToAbs(UCoord, VCoord);
 
                     double[] Position = BeamGage.MeasurePosition(MeasureDuration); // Execute measurement, MeasureDuration in milliseconds
 
-                    Results[0, IdxV, IdxU] = Position[0]-Reference[0]; // Write measurement result relative to reference
-                    Results[1, IdxV, IdxU] = Position[1]-Reference[1];
-                    Console.WriteLine("Deviation [μm]: dU = {0:F2}, dV = {1:F2}\n", Results[0, IdxV, IdxU], Results[1, IdxV, IdxU]);
+                    Results[0, IdxV, IdxU] = Reference[0] - Position[0]; // Write measurement result relative to reference
+                    Results[1, IdxV, IdxU] = Reference[1] - Position[1];
+                    Console.WriteLine("Deviation [mm]: dU = {0:F5}, dV = {1:F5}\n", Results[0, IdxV, IdxU], Results[1, IdxV, IdxU]);
                 }
             }
             ShowResult(); // Print result matrix to console
@@ -387,7 +400,7 @@ namespace BeamGageAutomation
             {
                 for (int j=0; j<NumU; j++)
                 {
-                    Console.Write("({0:F2}, {1:F2})\t", Results[0,i,j], Results[1,i,j]);
+                    Console.Write("({0:F5}, {1:F5})\t", Results[0,i,j], Results[1,i,j]);
                 }
                 Console.Write("\n\n");
             }
@@ -401,7 +414,7 @@ namespace BeamGageAutomation
         Exports always to the desktop.
         **/
         private static string DesktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop); // Always write to desktop
-        public static void ToNmark(double[,,] Results, string filename)
+        public static void ToNmark(double[,,] Deviations, string filename)
         {
             /**
             Exports to a csv file in aerotech formatting to create a .gcal file with the Aerotech Galvo Calibration File Converter.
@@ -409,27 +422,29 @@ namespace BeamGageAutomation
             string path = DesktopPath + "\\" + filename + ".csv";
             using (StreamWriter OutputFile = new StreamWriter(path))
             {
-                int NumU = Results.GetLength(2);
-                int NumV = Results.GetLength(1);
+                int NumU = Deviations.GetLength(2);
+                int NumV = Deviations.GetLength(1);
 
                 for (int i=NumV-1; i>=0; i--) // Go through grid from bottom to top
                 {
                     for (int j=0; j<NumU; j++) // Go through grid from left to right
                     {
+                        
+                        
                         if (j<NumU-1)
                         {
-                            OutputFile.Write("\"{0:F5},{1:F5},0.00000\",",Results[0,i,j], Results[1,i,j]);
+                            OutputFile.Write("\"{0:F5},{1:F5},0.00000\",",Deviations[0,i,j], Deviations[1,i,j]);
                         }
                         else
                         {
-                            OutputFile.Write("\"{0:F5},{1:F5},0.00000\"\n",Results[0,i,j], Results[1,i,j]); // Last entry of line
+                            OutputFile.Write("\"{0:F5},{1:F5},0.00000\"\n",Deviations[0,i,j], Deviations[1,i,j]); // Last entry of line
                         }
                     }
                 }
             }
         }
 
-        public static void ToCSV(double[,,] Results, string filename)
+        public static void ToCSV(double[,,] Deviations, double[,,] Ideal, string filename)
         {
             /**
             Exports a csv file using the Intersection finder formatting to use the Calibration File Maker for inter- and extrapolation.
@@ -437,8 +452,8 @@ namespace BeamGageAutomation
             string path = DesktopPath + "\\" + filename + ".csv";
             using(StreamWriter OutputFile = new StreamWriter(path))
             {
-                int NumU = Results.GetLength(2);
-                int NumV = Results.GetLength(1);
+                int NumU = Deviations.GetLength(2);
+                int NumV = Deviations.GetLength(1);
 
                 OutputFile.WriteLine("1.0"); // Resolution placeholder
                 OutputFile.WriteLine("row, column, zero point, Min, Max, X, Y"); // Header
@@ -447,7 +462,7 @@ namespace BeamGageAutomation
                 {
                     for (int j=0; j<NumU; j++)
                     {
-                        OutputFile.WriteLine("{0:F1},{1:F1},{2:F1},0.0,0.0,{3},{4}",i,j,Convert.ToDouble(i==(NumV-1)/2&&j==(NumU-1)/2), Results[0,i,j], Results[1,i,j]);
+                        OutputFile.WriteLine("{0:F1},{1:F1},{2:F1},0.0,0.0,{3},{4}",NumV-1-i,j,Convert.ToDouble(i==(NumV-1)/2&&j==(NumU-1)/2), Ideal[0,i,j]-Deviations[0,i,j], Ideal[1,i,j]-Deviations[1,i,j]);
                     }
                 }
             }
