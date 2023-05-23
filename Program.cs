@@ -3,6 +3,7 @@ using System.Threading;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+
 using Spiricon.Automation;
 using Aerotech.A3200;
 
@@ -26,6 +27,8 @@ namespace BeamGageAutomation
 
             Console.WriteLine("Set grid parameters in GridConfiguration.txt.");
             Console.WriteLine("Line format: <VariableName = value>\n");
+
+            // TODO Prompt user to specify export parameters
 
             Console.WriteLine("The current location will be the zero point of the calibration.");
             Console.WriteLine("Type start to start the calibration and cancel to terminate the program.");
@@ -59,6 +62,8 @@ namespace BeamGageAutomation
             {
                 CalibrationProgram Calibration = new CalibrationProgram(BGConnection, A3200Connection);
                 Calibration.RunProgram();
+                Export.ToCSV(Calibration.Results, "test_csv");
+                Export.ToNmark(Calibration.Results, "test_aerotech");
             }
             finally
             {
@@ -389,4 +394,63 @@ namespace BeamGageAutomation
         }
     }
 
+    public static class Export
+    {
+        /**
+        Class to export to different parsing systems using different formatting.
+        Exports always to the desktop.
+        **/
+        private static string DesktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop); // Always write to desktop
+        public static void ToNmark(double[,,] Results, string filename)
+        {
+            /**
+            Exports to a csv file in aerotech formatting to create a .gcal file with the Aerotech Galvo Calibration File Converter.
+            **/
+            string path = DesktopPath + "\\" + filename + ".csv";
+            using (StreamWriter OutputFile = new StreamWriter(path))
+            {
+                int NumU = Results.GetLength(2);
+                int NumV = Results.GetLength(1);
+
+                for (int i=NumV-1; i>=0; i--) // Go through grid from bottom to top
+                {
+                    for (int j=0; j<NumU; j++) // Go through grid from left to right
+                    {
+                        if (j<NumU-1)
+                        {
+                            OutputFile.Write("\"{0:F5},{1:F5},0.00000\",",Results[0,i,j], Results[1,i,j]);
+                        }
+                        else
+                        {
+                            OutputFile.Write("\"{0:F5},{1:F5},0.00000\"\n",Results[0,i,j], Results[1,i,j]); // Last entry of line
+                        }
+                    }
+                }
+            }
+        }
+
+        public static void ToCSV(double[,,] Results, string filename)
+        {
+            /**
+            Exports a csv file using the Intersection finder formatting to use the Calibration File Maker for inter- and extrapolation.
+            **/
+            string path = DesktopPath + "\\" + filename + ".csv";
+            using(StreamWriter OutputFile = new StreamWriter(path))
+            {
+                int NumU = Results.GetLength(2);
+                int NumV = Results.GetLength(1);
+
+                OutputFile.WriteLine("1.0"); // Resolution placeholder
+                OutputFile.WriteLine("row, column, zero point, Min, Max, X, Y"); // Header
+
+                for (int i=0; i<NumV; i++)
+                {
+                    for (int j=0; j<NumU; j++)
+                    {
+                        OutputFile.WriteLine("{0:F1},{1:F1},{2:F1},0.0,0.0,{3},{4}",i,j,i==(NumV-1)/2&&j==(NumU-1)/2, Results[0,i,j], Results[1,i,j]);
+                    }
+                }
+            }
+        }
+    }
 }
