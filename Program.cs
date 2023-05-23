@@ -337,19 +337,18 @@ namespace BeamGageAutomation
             {
                 for (int j=0; j<NumU; j++)
                 {
-                    // Go through all the measurement positions from top to bottom. Left to right in a zig-zag-pattern.
-                    // TODO Continue commenting here.
+                    // Go through all the measurement positions from top to bottom. Left to right in a zig-zag-pattern.                    
                     int IdxU;
-                    if (i%2==0)
+                    if (i%2==0) // Every even row is from left to right
                     {
                         IdxU = j;
                     }
-                    else
+                    else // Every odd row is from right to left
                     {
                         IdxU = NumU-1-j;
                     }
                     
-                    int IdxV = i;
+                    int IdxV = i; // All rows from top to bottom
                     Console.WriteLine("IdxV = {0}, IdxU = {1}", IdxV, IdxU);
                     if (IdxU==(NumU-1)/2 && IdxV==(NumV-1)/2)
                     {
@@ -359,21 +358,25 @@ namespace BeamGageAutomation
                         continue;
                     }
                     
-                    double UCoord = (IdxU-(NumU-1)/2)*DeltaU;
+                    double UCoord = (IdxU-(NumU-1)/2)*DeltaU; // Measure positions in optical coordinates
                     double VCoord = ((NumV-1)/2-IdxV)*DeltaV;
                     Aerotech.MoveToAbs(UCoord, VCoord);
 
-                    double[] Position = BeamGage.MeasurePosition(MeasureDuration);
+                    double[] Position = BeamGage.MeasurePosition(MeasureDuration); // Execute measurement, MeasureDuration in milliseconds
 
-                    Results[0, IdxV, IdxU] = Position[0]-Reference[0];
+                    Results[0, IdxV, IdxU] = Position[0]-Reference[0]; // Write measurement result relative to reference
                     Results[1, IdxV, IdxU] = Position[1]-Reference[1];
                 }
             }
-            ShowResult();
+            ShowResult(); // Print result matrix to console
         }
     
         public void ShowResult()
         {
+            /**
+            Writes the entries of the result matrix to their according positions in the console.
+            U- and V-deviations of individual points are grouped together.
+            **/
             for (int i=0; i<NumV; i++)
             {
                 for (int j=0; j<NumU; j++)
