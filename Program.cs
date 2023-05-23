@@ -447,7 +447,7 @@ namespace BeamGageAutomation
                 {
                     for (int j=0; j<NumU; j++)
                     {
-                        OutputFile.WriteLine("{0:F1},{1:F1},{2:F1},0.0,0.0,{3},{4}",i,j,i==(NumV-1)/2&&j==(NumU-1)/2, Results[0,i,j], Results[1,i,j]);
+                        OutputFile.WriteLine("{0:F1},{1:F1},{2:F1},0.0,0.0,{3},{4}",i,j,Convert.ToDouble(i==(NumV-1)/2&&j==(NumU-1)/2), Results[0,i,j], Results[1,i,j]);
                     }
                 }
             }
