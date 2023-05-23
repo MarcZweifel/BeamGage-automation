@@ -62,14 +62,10 @@ namespace BeamGageAutomation
             }
             finally
             {
-                // Error during program execution leads to disconnect of everything to allow for a clean restart.
+                // Disconnect from A3200 controller and BeamGage even when CalibrationProgram produced an error.
                 A3200Connection.Disconnect();
                 BGConnection.Disconnect();
             }
-
-            // Disconnect everything after program execution.
-            A3200Connection.Disconnect();
-            BGConnection.Disconnect();
         }
     }
 
@@ -131,7 +127,7 @@ namespace BeamGageAutomation
             Console.WriteLine("Measurement ended.");
            
             double[] Result = {ResultX.Average(), ResultY.Average()};
-            Console.WriteLine("X = {0:F2}, Y = {1:F2}", Result[0], Result[1]);
+            Console.WriteLine("Measured position [μm]: U = {0:F2}, V = {1:F2}", Result[0], Result[1]);
             
             ResultX.Clear();
             ResultY.Clear();
@@ -331,7 +327,9 @@ namespace BeamGageAutomation
             Run the main calibration program at the current position with the current setup.
             **/
             Aerotech.SetZero(); // Set reference at current position
+            Console.WriteLine();
             double[] Reference = BeamGage.MeasurePosition(MeasureDuration);
+            Console.WriteLine();
             
             for (int i=0; i<NumV; i++)
             {
@@ -355,6 +353,7 @@ namespace BeamGageAutomation
                         // If current position is reference position don't measure again
                         Results[0, IdxV, IdxU] = 0.0;
                         Results[1, IdxV, IdxU] = 0.0;
+                        Console.WriteLine("Reference position [μm]: dU = 0.00, dV = 0.00\n");
                         continue;
                     }
                     
@@ -366,6 +365,7 @@ namespace BeamGageAutomation
 
                     Results[0, IdxV, IdxU] = Position[0]-Reference[0]; // Write measurement result relative to reference
                     Results[1, IdxV, IdxU] = Position[1]-Reference[1];
+                    Console.WriteLine("Deviation [μm]: dU = {0:F2}, dV = {1:F2}\n", Results[0, IdxV, IdxU], Results[1, IdxV, IdxU]);
                 }
             }
             ShowResult(); // Print result matrix to console
@@ -377,6 +377,7 @@ namespace BeamGageAutomation
             Writes the entries of the result matrix to their according positions in the console.
             U- and V-deviations of individual points are grouped together.
             **/
+            Console.WriteLine("Deviation results in μm:\n");
             for (int i=0; i<NumV; i++)
             {
                 for (int j=0; j<NumU; j++)
