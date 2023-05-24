@@ -114,8 +114,8 @@ namespace BeamGageAutomation
             // Data collection switch is on -> Add centroid coordinates of the new frame to the results list.
             if (MeasureOn)
             {
-                ResultX.Add(bgClient.SpatialResults.CentroidX/1000); // in mm
-                ResultY.Add(bgClient.SpatialResults.CentroidY/1000);
+                ResultX.Add(bgClient.SpatialResults.PeakLocationX/1000); // in mm
+                ResultY.Add(bgClient.SpatialResults.PeakLocationY/1000);
             }
         }
 
@@ -386,6 +386,7 @@ namespace BeamGageAutomation
                     Console.WriteLine("Deviation [mm]: dU = {0:F5}, dV = {1:F5}\n", Results[0, IdxV, IdxU], Results[1, IdxV, IdxU]);
                 }
             }
+            Aerotech.MoveToAbs(0,0);
             ShowResult(); // Print result matrix to console
         }
     
@@ -395,7 +396,7 @@ namespace BeamGageAutomation
             Writes the entries of the result matrix to their according positions in the console.
             U- and V-deviations of individual points are grouped together.
             **/
-            Console.WriteLine("Deviation results in μm:\n");
+            Console.WriteLine("Deviation results in mm:\n");
             for (int i=0; i<NumV; i++)
             {
                 for (int j=0; j<NumU; j++)

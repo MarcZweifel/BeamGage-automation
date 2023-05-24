@@ -2,4 +2,4 @@
 <NumV = 5>
 <MillimeterDeltaU = 10.0>
 <MillimeterDeltaV = 10.0>
-<MillisecondsMeasureDuration = 5000>
+<MillisecondsMeasureDuration = 10000>
