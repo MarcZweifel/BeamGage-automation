@@ -131,6 +131,7 @@ namespace BeamGageAutomation
         public double[] MeasurePosition(int MillisecondsDuration)
         {
             ///Controls the measurement routine. Duration is in seconds.
+            // TODO Consider positive/negative axes direction of beam camera here!!!!!!!
             Console.WriteLine("Measurement started.");
             MeasureOn = true;
             Thread.Sleep(MillisecondsDuration);
