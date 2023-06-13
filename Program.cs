@@ -380,7 +380,7 @@ namespace BeamGageAutomation
                     Aerotech.MoveToAbs(UCoord, VCoord);
 
                     double[] Position = BeamGage.MeasurePosition(MeasureDuration); // Execute measurement, MeasureDuration in milliseconds
-
+                    // TODO Check for positive U- & V-axis
                     Results[0, IdxV, IdxU] = Reference[0] - Position[0]; // Write measurement result relative to reference
                     Results[1, IdxV, IdxU] = Reference[1] - Position[1];
                     Console.WriteLine("Deviation [mm]: dU = {0:F5}, dV = {1:F5}\n", Results[0, IdxV, IdxU], Results[1, IdxV, IdxU]);
