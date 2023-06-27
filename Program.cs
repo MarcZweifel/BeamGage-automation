@@ -65,9 +65,11 @@ namespace BeamGageAutomation
                 CalibrationProgram Calibration = new CalibrationProgram(BGConnection, A3200Connection);
                 Calibration.RunProgram();
                 string FilenameAerotech = Filename + "_aerotech";
-                string FilenameCSV = Filename + "_CSV";
+                string FilenameCalFileMaker = Filename + "_CalibrationFileMaker";
+                string FilenameDataFile = Filename + "_Data";
                 Export.ToNmark(Calibration.Results, FilenameAerotech);
-                Export.ToCSV(Calibration.Results, Calibration.IdealPositions, FilenameCSV);
+                Export.ToCalibrationFileMaker(Calibration.Results, Calibration.IdealPositions, FilenameCalFileMaker);
+                Export.ToDatafile(Calibration.Results, Calibration.IdealPositions, FilenameDataFile);
             }
             finally
             {
@@ -92,6 +94,8 @@ namespace BeamGageAutomation
         private bool MeasureOn = false; // Switch to control data collection.
         private List<double> ResultX = new List<double>(); // Dynamic lists to store the measured Centroid coordinates.
         private List<double> ResultY = new List<double>();
+        private List<double> ResultD = new List<double>();
+        private List<double> ResultIntensity = new List<double>();
 
         public void Connect()
         {
@@ -116,6 +120,8 @@ namespace BeamGageAutomation
             {
                 ResultX.Add(bgClient.SpatialResults.PeakLocationX/1000); // in mm
                 ResultY.Add(bgClient.SpatialResults.PeakLocationY/1000);
+                ResultD.Add(bgClient.SpatialResults.KnifeEdgeDiameter_16_84/1000); // in mm
+                ResultIntensity.Add(bgClient.PowerEnergyResults.Peak); // in cts
             }
         }
 
@@ -128,7 +134,7 @@ namespace BeamGageAutomation
             Console.WriteLine("BeamGage disconnected.");
         }
 
-        public double[] MeasurePosition(int MillisecondsDuration)
+        public double[] Measure(int MillisecondsDuration)
         {
             ///Controls the measurement routine. Duration is in seconds.
             // TODO Consider positive/negative axes direction of beam camera here!!!!!!!
@@ -138,11 +144,15 @@ namespace BeamGageAutomation
             MeasureOn = false;
             Console.WriteLine("Measurement ended.");
            
-            double[] Result = {ResultX.Average(), ResultY.Average()};
-            Console.WriteLine("Measured position [mm]: U = {0:F5}, V = {1:F5}", Result[0], Result[1]);
+            double[] Result = {ResultX.Average(), ResultY.Average(), ResultD.Average(), ResultIntensity.Average()};
+            Console.WriteLine("Measured position: U = {0:F5} mm, V = {1:F5} mm", Result[0], Result[1]);
+            Console.WriteLine("Knife Edge (16/84) Diameter: {0:F5} mm", Result[2]);
+            Console.WriteLine("Peak intensity: {0:F5} cts", Result[2]);
             
             ResultX.Clear();
             ResultY.Clear();
+            ResultD.Clear();
+            ResultIntensity.Clear();
 
             return Result;
         }
@@ -343,7 +353,7 @@ namespace BeamGageAutomation
             **/
             Aerotech.SetZero(); // Set reference at current position
             Console.WriteLine();
-            double[] Reference = BeamGage.MeasurePosition(MeasureDuration);
+            double[] Reference = BeamGage.Measure(MeasureDuration);
             Console.WriteLine();
             
             for (int i=0; i<NumV; i++)
@@ -380,10 +390,12 @@ namespace BeamGageAutomation
 
                     Aerotech.MoveToAbs(UCoord, VCoord);
 
-                    double[] Position = BeamGage.MeasurePosition(MeasureDuration); // Execute measurement, MeasureDuration in milliseconds
+                    double[] Position = BeamGage.Measure(MeasureDuration); // Execute measurement, MeasureDuration in milliseconds
                     
-                    Results[0, IdxV, IdxU] = Reference[0] - Position[0]; // Write measurement result relative to reference
-                    Results[1, IdxV, IdxU] = Reference[1] - Position[1];
+                    Results[0, IdxV, IdxU] = Position[0] - Reference[0]; // Write measurement position result relative to reference
+                    Results[1, IdxV, IdxU] = Position[1] - Reference[1];
+                    Results[3, IdxV, IdxU] = Position[2]; // Diameter is an absolute measurement
+                    Results[2, IdxV, IdxU] = Position[3] / Reference[3]; // Intensity is a percentage of reference
                     Console.WriteLine("Deviation [mm]: dU = {0:F5}, dV = {1:F5}\n", Results[0, IdxV, IdxU], Results[1, IdxV, IdxU]);
                 }
             }
@@ -431,22 +443,20 @@ namespace BeamGageAutomation
                 {
                     for (int j=0; j<NumU; j++) // Go through grid from left to right
                     {
-                        
-                        
                         if (j<NumU-1)
                         {
-                            OutputFile.Write("\"{0:F5},{1:F5},0.00000\",",Deviations[0,i,j], Deviations[1,i,j]);
+                            OutputFile.Write("\"{0:F5},{1:F5},0.00000\",",-Deviations[0,i,j], -Deviations[1,i,j]);
                         }
                         else
                         {
-                            OutputFile.Write("\"{0:F5},{1:F5},0.00000\"\n",Deviations[0,i,j], Deviations[1,i,j]); // Last entry of line
+                            OutputFile.Write("\"{0:F5},{1:F5},0.00000\"\n",-Deviations[0,i,j], -Deviations[1,i,j]); // Last entry of line
                         }
                     }
                 }
             }
         }
 
-        public static void ToCSV(double[,,] Deviations, double[,,] Ideal, string filename)
+        public static void ToCalibrationFileMaker(double[,,] Deviations, double[,,] Ideal, string filename)
         {
             /**
             Exports a csv file using the Intersection finder formatting to use the Calibration File Maker for inter- and extrapolation.
@@ -464,7 +474,34 @@ namespace BeamGageAutomation
                 {
                     for (int j=0; j<NumU; j++)
                     {
-                        OutputFile.WriteLine("{0:F1},{1:F1},{2:F1},0.0,0.0,{3},{4}",NumV-1-i,j,Convert.ToDouble(i==(NumV-1)/2&&j==(NumU-1)/2), Ideal[0,i,j]-Deviations[0,i,j], Ideal[1,i,j]-Deviations[1,i,j]);
+                        OutputFile.WriteLine(
+                            "{0:F1},{1:F1},{2:F1},0.0,0.0,{3},{4}",
+                            NumV-1-i,
+                            j,
+                            Convert.ToDouble(i==(NumV-1)/2&&j==(NumU-1)/2),
+                            Ideal[0,i,j]+Deviations[0,i,j],
+                            Ideal[1,i,j]+Deviations[1,i,j]);
+                    }
+                }
+            }
+        }
+
+        public static void ToDatafile(double[,,] Results, double[,,] Ideal, string filename)
+        {
+            string path = DesktopPath + "\\" + filename + ".csv";
+            using(StreamWriter OutputFile = new StreamWriter(path))
+            {
+                int NumU = Results.GetLength(2);
+                int NumV = Results.GetLength(1);
+
+                OutputFile.WriteLine("Row, Column, X_ideal [mm], Y_ideal [mm], Deviation X [mm], Deviation Y [mm], D_KE16/84 [mm], Relative peak intensity [-]"); // Header
+
+                for (int i=0; i<NumV; i++)
+                {
+                    for (int j=0; j<NumU; j++)
+                    {
+                        OutputFile.WriteLine("{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}",
+                        i, j, Ideal[0,i,j], Ideal[1,i,j], Results[0,i,j], Results[1,i,j], Results[2,i,j], Results[3,i,j]);
                     }
                 }
             }
