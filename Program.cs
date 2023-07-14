@@ -203,14 +203,26 @@ namespace BeamGageAutomation
             controller.Commands.Motion.Setup.PosOffsetSet(new string[]{"X", "Y", "U", "V"}, new double[]{0, 0, 0, 0});
         }
 
-        public void MoveToAbs(double UCoord, double VCoord)
+        public void MoveToAbsXY(double XCoord, double YCoord)
+        {
+            controller.Commands.Motion.Setup.Absolute();
+            controller.Commands.Motion.Linear(new string[] {"X", "Y"}, new double[] {XCoord, YCoord}, 10);
+            Thread.Sleep(500); // milliseconds of settling time for axis vibration.
+        }
+        public void MoveToAbsUV(double UCoord, double VCoord)
+        {
+            controller.Commands.Motion.Setup.Absolute();
+            controller.Commands.Motion.Linear(new string[] {"U", "V"}, new double[] {UCoord, VCoord}, 10);
+            Thread.Sleep(500); // milliseconds of settling time for axis vibration.
+        }
+        public void MoveToAbsXYUV(double UCoord, double VCoord)
         {
             /**
             Move optical and mechanical axes to the measurement point in absolute machine coordinates.
             Arguments are the coordinates in the optical system.
             **/
             controller.Commands.Motion.Setup.Absolute();
-            controller.Commands.Motion.Linear(new string[] {"U", "V", "X", "Y"}, new double[] {UCoord, VCoord, -UCoord, -VCoord}, 20);
+            controller.Commands.Motion.Linear(new string[] {"U", "V", "X", "Y"}, new double[] {UCoord, VCoord, -UCoord, -VCoord}, 10);
             Thread.Sleep(500); // milliseconds of settling time for axis vibration.
         }
     }
@@ -352,6 +364,7 @@ namespace BeamGageAutomation
             Run the main calibration program at the current position with the current setup.
             **/
             Aerotech.SetZero(); // Set reference at current position
+            double[,] TransformMatrix = GetCoordinateTransform();
             Console.WriteLine();
             double[] Reference = BeamGage.Measure(MeasureDuration);
             Console.WriteLine();
@@ -388,18 +401,23 @@ namespace BeamGageAutomation
                     IdealPositions[0, IdxV, IdxU] = UCoord;
                     IdealPositions[1, IdxV, IdxU] = VCoord;
 
-                    Aerotech.MoveToAbs(UCoord, VCoord);
+                    Aerotech.MoveToAbsXYUV(UCoord, VCoord);
 
                     double[] Position = BeamGage.Measure(MeasureDuration); // Execute measurement, MeasureDuration in milliseconds
-                    
-                    Results[0, IdxV, IdxU] = Position[0] - Reference[0]; // Write measurement position result relative to reference
-                    Results[1, IdxV, IdxU] = Position[1] - Reference[1];
+                    Position[0] = Position[0] - Reference[0]; // Measurement position result relative to reference
+                    Position[1] = Position[1] - Reference[1];
+
+                    double[] TransformedPosition = new double[] {Position[0], Position[1]};
+                    TransformedPosition = Calculate2DCoordinateTransform(TransformedPosition, TransformMatrix); // Transform to machine coordinates
+
+                    Results[0, IdxV, IdxU] = TransformedPosition[0]; 
+                    Results[1, IdxV, IdxU] = TransformedPosition[1];
                     Results[3, IdxV, IdxU] = Position[2]; // Diameter is an absolute measurement
                     Results[2, IdxV, IdxU] = Position[3] / Reference[3]; // Intensity is a percentage of reference
                     Console.WriteLine("Deviation [mm]: dU = {0:F5}, dV = {1:F5}\n", Results[0, IdxV, IdxU], Results[1, IdxV, IdxU]);
                 }
             }
-            Aerotech.MoveToAbs(0,0);
+            Aerotech.MoveToAbsXYUV(0,0);
             ShowResult(); // Print result matrix to console
         }
     
@@ -418,6 +436,43 @@ namespace BeamGageAutomation
                 }
                 Console.Write("\n\n");
             }
+        }
+
+        private double[,] GetCoordinateTransform()
+        {
+            /*
+            Calculates the transformation matrix from the beam camera coordinates to the machine coordinates.
+            The mechanical axes move a distance of 100 μm in positive X- and then 100 μm in positive Y-direction. From the beam positions measured during the movements the transformation matrix is calculated.
+            */
+
+            // X movement
+            Aerotech.SetZero();
+            double[] Reference = BeamGage.Measure(MeasureDuration);
+            Aerotech.MoveToAbsXY(0.1, 0);
+            double[] Position = BeamGage.Measure(MeasureDuration);
+            double X1 = Position[0]-Reference[0]; 
+            double Y1 = Position[1]-Reference[1];
+            Aerotech.MoveToAbsXY(0, 0.1);
+            Position = BeamGage.Measure(MeasureDuration);
+            double X2 = Position[0]-Reference[0]; 
+            double Y2 = Position[1]-Reference[1];
+
+            Aerotech.MoveToAbsXY(0,0);
+
+            double a = 0.1*(1-Y1*X2)/(X1*(X2*Y1-X1*Y2));
+            double b = 0.1*X2/(X2*Y1-X1*Y2);
+            double c = 0.1*Y1/(Y1*X2-Y2*X1);
+            double d = 0.1*X1/(X1*Y2-X2*Y1);
+
+            return new double[,] {{a, b}, {c, d}};
+
+        }
+        private double[] Calculate2DCoordinateTransform(double[] Vector, double[,] Matrix)
+        {
+            double[] TransformedVector = new double[2];
+            TransformedVector[0] = Matrix[0,0]*Vector[0]+Matrix[0,1]*Vector[1];
+            TransformedVector[1] = Matrix[1,0]*Vector[0]+Matrix[1,1]*Vector[1];
+            return TransformedVector;
         }
     }
 
@@ -475,11 +530,7 @@ namespace BeamGageAutomation
                     for (int j=0; j<NumU; j++)
                     {
                         OutputFile.WriteLine(
-<<<<<<< HEAD
-                            "{0:F1},{1:F1},{2:F1},0.0,0.0,{3:F},{4:F}",
-=======
                             "{0:F1},{1:F1},{2:F1},0.0,0.0,{3},{4}",
->>>>>>> c195e71f6f1dd0f144e60331efd955f2e32d0222
                             NumV-1-i,
                             j,
                             Convert.ToDouble(i==(NumV-1)/2&&j==(NumU-1)/2),
