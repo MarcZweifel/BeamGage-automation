@@ -1,5 +1,5 @@
-<NumU = 5>
-<NumV = 5>
+<NumU = 3>
+<NumV = 3>
 <MillimeterDeltaU = 10.0>
 <MillimeterDeltaV = 10.0>
 <MillisecondsMeasureDuration = 5000>

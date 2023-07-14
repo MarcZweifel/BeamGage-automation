@@ -103,7 +103,6 @@ namespace BeamGageAutomation
             Starts a new BeamGage automation client, lets user know over the console and shows the GUI. 
             Registeres the NewFrameEvent callback function.
             **/
-
             bgClient = new AutomatedBeamGage("ScannerCalibration", true);
             new AutomationFrameEvents(bgClient.ResultsPriorityFrame).OnNewFrame += OnFrameFunction; // Register callback function
             Console.WriteLine("BeamGage connected.");
@@ -207,12 +206,14 @@ namespace BeamGageAutomation
         {
             controller.Commands.Motion.Setup.Absolute();
             controller.Commands.Motion.Linear(new string[] {"X", "Y"}, new double[] {XCoord, YCoord}, 10);
+            WaitMotionDone(new string[] {"X", "Y"});
             Thread.Sleep(500); // milliseconds of settling time for axis vibration.
         }
         public void MoveToAbsUV(double UCoord, double VCoord)
         {
             controller.Commands.Motion.Setup.Absolute();
             controller.Commands.Motion.Linear(new string[] {"U", "V"}, new double[] {UCoord, VCoord}, 10);
+            WaitMotionDone(new string[] {"U", "V"});
             Thread.Sleep(500); // milliseconds of settling time for axis vibration.
         }
         public void MoveToAbsXYUV(double UCoord, double VCoord)
@@ -223,7 +224,12 @@ namespace BeamGageAutomation
             **/
             controller.Commands.Motion.Setup.Absolute();
             controller.Commands.Motion.Linear(new string[] {"U", "V", "X", "Y"}, new double[] {UCoord, VCoord, -UCoord, -VCoord}, 10);
+            WaitMotionDone(new string[] {"X", "Y", "U", "V"});
             Thread.Sleep(500); // milliseconds of settling time for axis vibration.
+        }
+        public void WaitMotionDone(string[] axes)
+        {
+            controller.Commands.Motion.WaitForMotionDone(Aerotech.A3200.Commands.WaitOption.InPosition, axes);
         }
     }
 
@@ -264,7 +270,7 @@ namespace BeamGageAutomation
             DeltaU = GetVariable<double>("MillimeterDeltaU", GridVariables);
             DeltaV = GetVariable<double>("MillimeterDeltaV", GridVariables);
             MeasureDuration = GetVariable<int>("MillisecondsMeasureDuration", GridVariables);
-            Results = new double[2, NumV, NumU];
+            Results = new double[4, NumV, NumU];
             IdealPositions = new double[2, NumV, NumU];
             Aerotech = AerotechConnector;
             BeamGage = BeamGageConnector;
@@ -365,6 +371,9 @@ namespace BeamGageAutomation
             **/
             Aerotech.SetZero(); // Set reference at current position
             double[,] TransformMatrix = GetCoordinateTransform();
+            Console.WriteLine("The transformation matrix is:");
+            Console.WriteLine("{0:F6}    {1:F6}", TransformMatrix[0,0], TransformMatrix[0,1]);
+            Console.WriteLine("{0:F6}    {1:F6}", TransformMatrix[1,0], TransformMatrix[1,1]);
             Console.WriteLine();
             double[] Reference = BeamGage.Measure(MeasureDuration);
             Console.WriteLine();
@@ -407,13 +416,15 @@ namespace BeamGageAutomation
                     Position[0] = Position[0] - Reference[0]; // Measurement position result relative to reference
                     Position[1] = Position[1] - Reference[1];
 
-                    double[] TransformedPosition = new double[] {Position[0], Position[1]};
+                    double[] TransformedPosition = {Position[0], Position[1]};
                     TransformedPosition = Calculate2DCoordinateTransform(TransformedPosition, TransformMatrix); // Transform to machine coordinates
+
+                    
 
                     Results[0, IdxV, IdxU] = TransformedPosition[0]; 
                     Results[1, IdxV, IdxU] = TransformedPosition[1];
-                    Results[3, IdxV, IdxU] = Position[2]; // Diameter is an absolute measurement
-                    Results[2, IdxV, IdxU] = Position[3] / Reference[3]; // Intensity is a percentage of reference
+                    Results[2, IdxV, IdxU] = Position[2]; // Diameter is an absolute measurement
+                    Results[3, IdxV, IdxU] = Position[3] / Reference[3]; // Intensity is a percentage of reference
                     Console.WriteLine("Deviation [mm]: dU = {0:F5}, dV = {1:F5}\n", Results[0, IdxV, IdxU], Results[1, IdxV, IdxU]);
                 }
             }
@@ -452,6 +463,8 @@ namespace BeamGageAutomation
             double[] Position = BeamGage.Measure(MeasureDuration);
             double X1 = Position[0]-Reference[0]; 
             double Y1 = Position[1]-Reference[1];
+
+            // Y Movement
             Aerotech.MoveToAbsXY(0, 0.1);
             Position = BeamGage.Measure(MeasureDuration);
             double X2 = Position[0]-Reference[0]; 
@@ -463,7 +476,9 @@ namespace BeamGageAutomation
             double b = 0.1*X2/(X2*Y1-X1*Y2);
             double c = 0.1*Y1/(Y1*X2-Y2*X1);
             double d = 0.1*X1/(X1*Y2-X2*Y1);
-
+            Console.WriteLine("The transformation matrix is:");
+            Console.WriteLine("{0:F6}    {1:F6}", a, b);
+            Console.WriteLine("{0:F6}    {1:F6}", c, d);
             return new double[,] {{a, b}, {c, d}};
 
         }
