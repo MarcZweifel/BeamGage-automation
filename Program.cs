@@ -472,7 +472,7 @@ namespace BeamGageAutomation
 
             Aerotech.MoveToAbsXY(0,0);
 
-            double a = 0.1*(1-Y1*X2)/(X1*(X2*Y1-X1*Y2));
+            double a = 0.1*Y2/(X1*Y2-X2*Y1);
             double b = 0.1*X2/(X2*Y1-X1*Y2);
             double c = 0.1*Y1/(Y1*X2-Y2*X1);
             double d = 0.1*X1/(X1*Y2-X2*Y1);
