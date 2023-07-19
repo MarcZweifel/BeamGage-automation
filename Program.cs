@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
+
 using Spiricon.Automation;
 using Aerotech.A3200;
 
@@ -370,7 +371,10 @@ namespace BeamGageAutomation
             Run the main calibration program at the current position with the current setup.
             **/
             Aerotech.SetZero(); // Set reference at current position
-            double[,] TransformMatrix = GetCoordinateTransform();
+            double SetLength = 0.1;
+            double[] BaseVectors = GetBaseCoordinates(SetLength);
+            double[,] TransformMatrix = GetCoordinateTransform(BaseVectors);
+            double ScalingFactor = GetScalingFactor(BaseVectors, SetLength);
             Console.WriteLine("The transformation matrix is:");
             Console.WriteLine("{0:F6}    {1:F6}", TransformMatrix[0,0], TransformMatrix[0,1]);
             Console.WriteLine("{0:F6}    {1:F6}", TransformMatrix[1,0], TransformMatrix[1,1]);
@@ -419,11 +423,9 @@ namespace BeamGageAutomation
                     double[] TransformedPosition = {Position[0], Position[1]};
                     TransformedPosition = Calculate2DCoordinateTransform(TransformedPosition, TransformMatrix); // Transform to machine coordinates
 
-                    
-
                     Results[0, IdxV, IdxU] = TransformedPosition[0]; 
                     Results[1, IdxV, IdxU] = TransformedPosition[1];
-                    Results[2, IdxV, IdxU] = Position[2]; // Diameter is an absolute measurement
+                    Results[2, IdxV, IdxU] = Position[2] * ScalingFactor; // Diameter scaled to machine coordinates is an absolute measurement
                     Results[3, IdxV, IdxU] = Position[3] / Reference[3]; // Intensity is a percentage of reference
                     Console.WriteLine("Deviation [mm]: dU = {0:F5}, dV = {1:F5}\n", Results[0, IdxV, IdxU], Results[1, IdxV, IdxU]);
                 }
@@ -449,28 +451,18 @@ namespace BeamGageAutomation
             }
         }
 
-        private double[,] GetCoordinateTransform()
+        private double[,] GetCoordinateTransform(double[] BaseVectors)
         {
-            /*
+            /**
             Calculates the transformation matrix from the beam camera coordinates to the machine coordinates.
             The mechanical axes move a distance of 100 μm in positive X- and then 100 μm in positive Y-direction. From the beam positions measured during the movements the transformation matrix is calculated.
-            */
+            **/
 
             // X movement
-            Aerotech.SetZero();
-            double[] Reference = BeamGage.Measure(MeasureDuration);
-            Aerotech.MoveToAbsXY(0.1, 0);
-            double[] Position = BeamGage.Measure(MeasureDuration);
-            double X1 = Position[0]-Reference[0]; 
-            double Y1 = Position[1]-Reference[1];
-
-            // Y Movement
-            Aerotech.MoveToAbsXY(0, 0.1);
-            Position = BeamGage.Measure(MeasureDuration);
-            double X2 = Position[0]-Reference[0]; 
-            double Y2 = Position[1]-Reference[1];
-
-            Aerotech.MoveToAbsXY(0,0);
+            double X1 = BaseVectors[0];
+            double Y1 = BaseVectors[1];
+            double X2 = BaseVectors[2];
+            double Y2 = BaseVectors[3];
 
             double a = 0.1*Y2/(X1*Y2-X2*Y1);
             double b = 0.1*X2/(X2*Y1-X1*Y2);
@@ -488,6 +480,40 @@ namespace BeamGageAutomation
             TransformedVector[0] = Matrix[0,0]*Vector[0]+Matrix[0,1]*Vector[1];
             TransformedVector[1] = Matrix[1,0]*Vector[0]+Matrix[1,1]*Vector[1];
             return TransformedVector;
+        }
+
+        private double[] GetBaseCoordinates(double SetLength)
+        {
+            /**
+            Function to find the components of the machine coordinate base vectors in the base of the beam camera sensor.
+            **/
+            // X Movement
+            Aerotech.SetZero();
+            double[] Reference = BeamGage.Measure(MeasureDuration);
+            Aerotech.MoveToAbsXY(SetLength, 0);
+            double[] Position = BeamGage.Measure(MeasureDuration);
+            double X1 = Position[0]-Reference[0]; 
+            double Y1 = Position[1]-Reference[1];
+
+            // Y Movement
+            Aerotech.MoveToAbsXY(0, SetLength);
+            Position = BeamGage.Measure(MeasureDuration);
+            double X2 = Position[0]-Reference[0]; 
+            double Y2 = Position[1]-Reference[1];
+
+            Aerotech.MoveToAbsXY(0,0);
+            return new double[] {X1, Y1, X2, Y2};
+        }
+        private double GetScalingFactor(double [] BaseVectors, double SetLength)
+        {
+            double X1 = BaseVectors[0];
+            double Y1 = BaseVectors[1];
+            double X2 = BaseVectors[2];
+            double Y2 = BaseVectors[3];
+            double scaling1 = SetLength/(Math.Sqrt(Math.Pow(X1,2)+Math.Pow(Y1,2)));
+            double scaling2 = SetLength/(Math.Sqrt(Math.Pow(X2,2)+Math.Pow(Y2,2)));
+            
+            return (scaling1+scaling2)/2;
         }
     }
 
