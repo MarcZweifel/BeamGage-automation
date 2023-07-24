@@ -68,9 +68,11 @@ namespace BeamGageAutomation
                 string FilenameAerotech = Filename + "_aerotech";
                 string FilenameCalFileMaker = Filename + "_CalibrationFileMaker";
                 string FilenameDataFile = Filename + "_Data";
+                string FilenameSystemConfiguration = Filename + "_SystemConfiguration";
                 Export.ToNmark(Calibration.Results, FilenameAerotech);
                 Export.ToCalibrationFileMaker(Calibration.Results, Calibration.IdealPositions, FilenameCalFileMaker);
                 Export.ToDatafile(Calibration.Results, Calibration.IdealPositions, FilenameDataFile);
+                Export.ToSystemConfiguration(A3200Connection, FilenameSystemConfiguration);
             }
             finally
             {
@@ -164,6 +166,33 @@ namespace BeamGageAutomation
         Class to handle the connection to Aerotech A3200. And execute the necessary commands in a simplified way.
         **/
         private Controller controller; // Declare controller handle.
+
+        public int[] AxisIndicesUV {
+            get {return new int[] {
+                controller.Information.Axes["U"].Number,
+                controller.Information.Axes["V"].Number};
+                }
+        }
+
+        public int[] ReverseMotionUV {
+            get {return new int[] {
+                controller.Parameters.Axes["U"].Motion.ReverseMotionDirection.Value, controller.Parameters.Axes["V"].Motion.ReverseMotionDirection.Value};
+                }
+        }
+
+        public double[] CountsPerUnitUV {
+            get {
+                return new double[] {
+                controller.Parameters.Axes["U"].Units.CountsPerUnit.Value,
+                controller.Parameters.Axes["V"].Units.CountsPerUnit.Value};
+                }
+        }
+
+        public int LensNumber {
+            get {
+                return Convert.ToInt16(controller.Variables.Global.Doubles["lens"].Value);
+            }
+        }
         public void Connect()
         {
             /**
@@ -181,7 +210,7 @@ namespace BeamGageAutomation
             }
             controller = Controller.Connect(); // Connect after initialization
             controller.Commands.Motion.Enable(new string[] {"X", "Y", "U", "V"}); // Enable necessary axes.
-            controller.Commands.Motion.Linear(new string[] {"U", "V"}, new double[] {0, 0}, 100); // Go to U0 V0
+            controller.Commands.Motion.Home(new string[] {"U", "V"}); // Home U and V
             Console.WriteLine("Controller connected.");
         }
 
@@ -247,8 +276,8 @@ namespace BeamGageAutomation
         // Declare geometric variables as class properties
         private static int NumU;
         private static int NumV;
-        private static double DeltaU;
-        private static double DeltaV;
+        public static double DeltaU;
+        public static double DeltaV;
 
 
         // Declare measurement duration as class property
@@ -604,5 +633,28 @@ namespace BeamGageAutomation
                 }
             }
         }
+
+        public static void ToSystemConfiguration(A3200Connector AerotechConnector, string filename)
+        {
+            string path = DesktopPath + "\\" + filename + ".csv";
+            using(StreamWriter OutputFile = new StreamWriter(path))
+            {
+                OutputFile.WriteLine("XIndex = {0:D}; int", AerotechConnector.AxisIndicesUV[0]);
+                OutputFile.WriteLine("YIndex = {0:D}; int", AerotechConnector.AxisIndicesUV[1]);
+
+                OutputFile.WriteLine("XReverseMotion = {0:D}; bool", AerotechConnector.ReverseMotionUV[0]);
+                OutputFile.WriteLine("YReverseMotion = {0:D}; bool", AerotechConnector.ReverseMotionUV[1]);
+
+                OutputFile.WriteLine("XCountsPerUnit = {0}; float", AerotechConnector.CountsPerUnitUV[0]);
+                OutputFile.WriteLine("YCountsPerUnit = {0]; float", AerotechConnector.CountsPerUnitUV[1]);
+
+                OutputFile.WriteLine("Lens = {0:D}; int", AerotechConnector.LensNumber);
+
+                OutputFile.WriteLine("dX = {0}; float", CalibrationProgram.DeltaU);
+                OutputFile.WriteLine("dY = {0}; float", CalibrationProgram.DeltaV);
+            }
+        }
+
+        
     }
 }
