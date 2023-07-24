@@ -120,7 +120,8 @@ namespace BeamGageAutomation
             {
                 ResultX.Add(bgClient.SpatialResults.PeakLocationX/1000); // in mm
                 ResultY.Add(bgClient.SpatialResults.PeakLocationY/1000);
-                ResultD.Add(bgClient.SpatialResults.KnifeEdgeDiameter_16_84/1000); // in mm
+                //ResultD.Add(bgClient.SpatialResults.KnifeEdgeDiameter_16_84/1000); // in mm
+                ResultD.Add(bgClient.SpatialResults.PercentOfPeakDiameter/1000); // in mm
                 ResultIntensity.Add(bgClient.PowerEnergyResults.Peak); // in cts
             }
         }
@@ -137,7 +138,6 @@ namespace BeamGageAutomation
         public double[] Measure(int MillisecondsDuration)
         {
             ///Controls the measurement routine. Duration is in seconds.
-            // TODO Consider positive/negative axes direction of beam camera here!!!!!!!
             Console.WriteLine("Measurement started.");
             MeasureOn = true;
             Thread.Sleep(MillisecondsDuration);
@@ -145,9 +145,9 @@ namespace BeamGageAutomation
             Console.WriteLine("Measurement ended.");
            
             double[] Result = {ResultX.Average(), ResultY.Average(), ResultD.Average(), ResultIntensity.Average()};
-            Console.WriteLine("Measured position: U = {0:F5} mm, V = {1:F5} mm", Result[0], Result[1]);
-            Console.WriteLine("Knife Edge (16/84) Diameter: {0:F5} mm", Result[2]);
-            Console.WriteLine("Peak intensity: {0:F5} cts", Result[2]);
+            Console.WriteLine("Measured position: g = {0:F5} mm, h = {1:F5} mm", Result[0], Result[1]);
+            Console.WriteLine("Measured diametre: {0:F5} mm", Result[2]);
+            Console.WriteLine("Measured peak intensity: {0:F5} cts", Result[2]);
             
             ResultX.Clear();
             ResultY.Clear();
@@ -373,7 +373,7 @@ namespace BeamGageAutomation
             Aerotech.SetZero(); // Set reference at current position
             double SetLength = 0.1;
             double[] BaseVectors = GetBaseCoordinates(SetLength);
-            double[,] TransformMatrix = GetCoordinateTransform(BaseVectors);
+            double[,] TransformMatrix = GetCoordinateTransform(BaseVectors, SetLength);
             double ScalingFactor = GetScalingFactor(BaseVectors, SetLength);
             Console.WriteLine("The transformation matrix is:");
             Console.WriteLine("{0:F6}    {1:F6}", TransformMatrix[0,0], TransformMatrix[0,1]);
@@ -427,7 +427,9 @@ namespace BeamGageAutomation
                     Results[1, IdxV, IdxU] = TransformedPosition[1];
                     Results[2, IdxV, IdxU] = Position[2] * ScalingFactor; // Diameter scaled to machine coordinates is an absolute measurement
                     Results[3, IdxV, IdxU] = Position[3] / Reference[3]; // Intensity is a percentage of reference
-                    Console.WriteLine("Deviation [mm]: dU = {0:F5}, dV = {1:F5}\n", Results[0, IdxV, IdxU], Results[1, IdxV, IdxU]);
+                    Console.WriteLine("\nDeviation: dU = {0:F5} mm, dV = {1:F5} mm", Results[0, IdxV, IdxU], Results[1, IdxV, IdxU]);
+                    Console.WriteLine("Diametre: D = {0:F5} mm", Results[2, IdxV, IdxU]);
+                    Console.WriteLine("Relative Peak Intensity: I = {0:F5}\n", Results[3, IdxV, IdxU]);
                 }
             }
             Aerotech.MoveToAbsXYUV(0,0);
@@ -451,7 +453,7 @@ namespace BeamGageAutomation
             }
         }
 
-        private double[,] GetCoordinateTransform(double[] BaseVectors)
+        private double[,] GetCoordinateTransform(double[] BaseVectors, double SetLength)
         {
             /**
             Calculates the transformation matrix from the beam camera coordinates to the machine coordinates.
@@ -464,10 +466,10 @@ namespace BeamGageAutomation
             double X2 = BaseVectors[2];
             double Y2 = BaseVectors[3];
 
-            double a = 0.1*Y2/(X1*Y2-X2*Y1);
-            double b = 0.1*X2/(X2*Y1-X1*Y2);
-            double c = 0.1*Y1/(Y1*X2-Y2*X1);
-            double d = 0.1*X1/(X1*Y2-X2*Y1);
+            double a = SetLength*Y2/(X1*Y2-X2*Y1);
+            double b = SetLength*X2/(X2*Y1-X1*Y2);
+            double c = SetLength*Y1/(Y1*X2-Y2*X1);
+            double d = SetLength*X1/(X1*Y2-X2*Y1);
             Console.WriteLine("The transformation matrix is:");
             Console.WriteLine("{0:F6}    {1:F6}", a, b);
             Console.WriteLine("{0:F6}    {1:F6}", c, d);
@@ -572,11 +574,11 @@ namespace BeamGageAutomation
                     {
                         OutputFile.WriteLine(
                             "{0:F1},{1:F1},{2:F1},0.0,0.0,{3},{4}",
-                            NumV-1-i,
+                            i,
                             j,
                             Convert.ToDouble(i==(NumV-1)/2&&j==(NumU-1)/2),
                             Ideal[0,i,j]+Deviations[0,i,j],
-                            Ideal[1,i,j]+Deviations[1,i,j]);
+                            -Ideal[1,i,j]-Deviations[1,i,j]);
                     }
                 }
             }
@@ -590,13 +592,13 @@ namespace BeamGageAutomation
                 int NumU = Results.GetLength(2);
                 int NumV = Results.GetLength(1);
 
-                OutputFile.WriteLine("Row, Column, X_ideal [mm], Y_ideal [mm], Deviation X [mm], Deviation Y [mm], D_KE16/84 [mm], Relative peak intensity [-]"); // Header
+                OutputFile.WriteLine("Row, Column, U_ideal [mm], V_ideal [mm], Deviation U [mm], Deviation V [mm], D_13.5%peak [mm], Relative peak intensity [-]"); // Header
 
                 for (int i=0; i<NumV; i++)
                 {
                     for (int j=0; j<NumU; j++)
                     {
-                        OutputFile.WriteLine("{0:D}, {1:D}, {2:F}, {3:F}, {4:F}, {5:F}, {6:F}, {7:F}",
+                        OutputFile.WriteLine("{0:D}, {1:D}, {2}, {3}, {4}, {5}, {6}, {7}",
                         i, j, Ideal[0,i,j], Ideal[1,i,j], Results[0,i,j], Results[1,i,j], Results[2,i,j], Results[3,i,j]);
                     }
                 }
