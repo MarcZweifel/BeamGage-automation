@@ -123,7 +123,7 @@ namespace BeamGageAutomation
                 ResultX.Add(bgClient.SpatialResults.PeakLocationX/1000); // in mm
                 ResultY.Add(bgClient.SpatialResults.PeakLocationY/1000);
                 //ResultD.Add(bgClient.SpatialResults.KnifeEdgeDiameter_16_84/1000); // in mm
-                ResultD.Add(bgClient.SpatialResults.PercentOfPeakDiameter/1000); // in mm
+                ResultD.Add(bgClient.SpatialResults.MovingSlitMinor/1000); // in mm
                 ResultIntensity.Add(bgClient.PowerEnergyResults.Peak); // in cts
             }
         }
