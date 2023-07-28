@@ -24,25 +24,28 @@ namespace BeamGageAutomation
             BGConnection.Connect();
             
             // Print instructions to console
-            Console.WriteLine("Set up the beam camera as usual.\n");
+            Console.WriteLine("==========================================================================");
+            Console.WriteLine("\nSet up the beam camera as usual.\n");
 
             Console.WriteLine("Set grid parameters in GridConfiguration.txt.");
             Console.WriteLine("Line format: <VariableName = value>\n");
+            Console.WriteLine("The current location will be the zero point of the calibration grid.\n");
+            Console.WriteLine("==========================================================================");
 
-            Console.WriteLine("Enter the filename for the exported calibration file.");
+            Console.WriteLine("\nEnter the filename for the exported calibration file.");
             string Filename = Console.ReadLine();
-            Console.WriteLine("After completion, the CSV-file will be saved as " + Filename + ".csv on the desktop and can be imported to the Aerotech Calibration File Converter.\n" );
-
-            Console.WriteLine("The current location will be the zero point of the calibration grid.");
-            
-
-            Console.WriteLine("Type start to start the calibration and cancel to terminate the program.");
+            Console.WriteLine();
+            Console.WriteLine("After completion, the CSV-file will be saved on the desktop and can be imported into the Aerotech Calibration File Converter.\n" );
+            Console.WriteLine("==========================================================================");
+            Console.WriteLine("\nType 'start' to start the calibration or 'cancel' to terminate the program.");
             
             // Loop for command parsing
-            string answer = Console.ReadLine().ToLower();
+            
             while (true)
             {
-                
+                string answer = Console.ReadLine().ToLower();
+                Console.WriteLine();
+                Console.WriteLine("==========================================================================\n");
                 if (answer == "start")
                 {
                     // Typed "start" -> exit loop & continue with program
@@ -58,8 +61,7 @@ namespace BeamGageAutomation
                 else
                 {
                     // Typed invalid command -> try again and repeat loop.
-                    Console.WriteLine("Invalid command! Set up the beam camera as usual. Type start to start the calibration and cancel to terminate the program.");
-                    answer = Console.ReadLine().ToLower();
+                    Console.WriteLine("\nInvalid command! Type 'start' to start the calibration or 'cancel' to terminate the program.");
                 }
             }
             
@@ -79,7 +81,7 @@ namespace BeamGageAutomation
                 // Disconnect from A3200 controller and BeamGage even when CalibrationProgram produced an error.
                 A3200Connection.Disconnect();
                 BGConnection.Disconnect();
-                Console.WriteLine("Press enter to close the program.");
+                Console.WriteLine("\nPress enter to close the program.");
                 Console.ReadLine();
             }
         }
@@ -143,17 +145,17 @@ namespace BeamGageAutomation
         public double[] Measure(int MillisecondsDuration)
         {
             ///Controls the measurement routine. Duration is in seconds.
-            Console.WriteLine("Measurement started.");
+            Console.WriteLine("\nMeasurement started.");
             MeasureOn = true;
             Thread.Sleep(MillisecondsDuration);
             MeasureOn = false;
             Console.WriteLine("Measurement ended.");
            
             double[] Result = {ResultX.Average(), ResultY.Average(), ResultD.Average(), ResultIntensity.Average(), ResultEllipticity.Average()};
-            Console.WriteLine("Measured position: g = {0:F5} mm, h = {1:F5} mm", Result[0], Result[1]);
+            Console.WriteLine("\nMeasured position: g = {0:F5} mm, h = {1:F5} mm", Result[0], Result[1]);
             Console.WriteLine("Measured diametre: {0:F5} mm", Result[2]);
             Console.WriteLine("Measured peak intensity: {0:F5} cts", Result[3]);
-            Console.WriteLine("Measured ellipticity: {0:F5} cts", Result[4]);
+            Console.WriteLine("Measured ellipticity: {0:F5}\n", Result[4]);
             
             ResultX.Clear();
             ResultY.Clear();
@@ -319,11 +321,12 @@ namespace BeamGageAutomation
 
             while(true)
             {
-                Console.WriteLine("Generate new measurement grid? Answer 'yes' or 'no'.");
+                Console.WriteLine("\nGenerate new measurement grid?"); 
+                Console.WriteLine("Type 'yes' or 'no'.");
                 string answer = Console.ReadLine().ToLower();
+                Console.WriteLine();
                 if (answer == "yes")
                 {
-                    CreateGrid();
                     break;
                 }
 
@@ -331,6 +334,14 @@ namespace BeamGageAutomation
                 {
                     CustomGridFlag = true;
                     break;
+                }
+
+                else if (answer == "cancel")
+                {
+                    // Typed "cancel" -> Disconnect everything and terminate the program
+                    AerotechConnector.Disconnect();
+                    BeamGageConnector.Disconnect();
+                    Environment.Exit(0);
                 }
 
                 else
@@ -343,8 +354,11 @@ namespace BeamGageAutomation
             {
                 while(true)
                 {
-                    Console.WriteLine("Import measurement coordinates from file path in GridConfiguration.txt? Type 'yes' or 'no'.");
+                    Console.WriteLine("==========================================================================\n");
+                    Console.WriteLine("Import measurement coordinates from file path in GridConfiguration.txt?");
+                    Console.WriteLine("Type 'yes' or 'no'. When 'no' is chosen, the standard grid file is imported. Type 'cancel' to terminate the program.");
                     string answer = Console.ReadLine().ToLower();
+                    Console.WriteLine();
                     if (answer == "no")
                     {
                         try
@@ -354,27 +368,28 @@ namespace BeamGageAutomation
                         }
                         catch (FileNotFoundException)
                         {
+                            Console.WriteLine("The standard grid file does not exist.");
                             CreateGrid();
+                            CustomGridFlag = false;
                             break;
                         }
                         catch (Exception ex) when (!(ex is FileNotFoundException))
                         {
-                            Console.WriteLine("Something went wrong when improting the standard grid file. Check the formatting inside the file.");
+                            Console.WriteLine("Something went wrong when importing the standard grid file. Check the formatting inside the file.");
                         }
-
-                        
                     }
                     else if (answer == "yes")
                     {
                         try
                         {
+                            GridVariables = GetGridVariables();
                             string path = GetVariable<string>("CoordinatesFilePath", GridVariables);
                             GetSavedGrid(path);
                             break;
                         }
                         catch (FileNotFoundException)
                         {
-                            Console.WriteLine("The file at the given path does not exist. Check if the path is correct and retry.");
+                            Console.WriteLine("The file at the given path does not exist. Check if the path is correct. Press enter to retry.");
                             Console.ReadLine();
                             GridVariables = GetGridVariables();
 
@@ -384,6 +399,13 @@ namespace BeamGageAutomation
                             Console.WriteLine("Something went wrong during import of the coordinate list. Check if the formatting in the file is correct.");
                             Console.ReadLine();
                         }
+                    }
+                    else if (answer == "cancel")
+                    {
+                        // Typed "cancel" -> Disconnect everything and terminate the program
+                        AerotechConnector.Disconnect();
+                        BeamGageConnector.Disconnect();
+                        Environment.Exit(0);
                     }
                     else
                     {
@@ -439,7 +461,7 @@ namespace BeamGageAutomation
                     }
                 }
             }
-            string [,] result = new string[lines.Capacity,2]; // Initialize nx2 array for variable name string and value string
+            string [,] result = new string[lines.Count,2]; // Initialize nx2 array for variable name string and value string
             for (int i=0; i<lines.Count; i++)
             {
                 string[] temp = lines[i].Split('='); // Split line string at '=' sign
@@ -454,7 +476,7 @@ namespace BeamGageAutomation
                 {
                     List<double[]> PositionList = new List<double[]>();
                     List<int[]> IndexList = new List<int[]>();
-                    using(StreamReader InputFile = new StreamReader("MeasureCoordinates.csv"))
+                    using(StreamReader InputFile = new StreamReader(filepath))
                     {
                         InputFile.ReadLine(); // Remove header
                         string line;
@@ -480,7 +502,9 @@ namespace BeamGageAutomation
                             IndexList.Add(Index);
                         }
                     }
-                    for (int i=0; i<PositionList.Capacity; i++)
+                    IdealPositions = new double[PositionList.Count,2];
+                    Indices = new int[IndexList.Count, 3];
+                    for (int i=0; i<PositionList.Count; i++)
                     {
                         IdealPositions[i,0] = PositionList[i][0];
                         IdealPositions[i,1] = PositionList[i][1];
@@ -489,6 +513,7 @@ namespace BeamGageAutomation
                         Indices[i,1] = IndexList[i][1];
                         Indices[i,2] = IndexList[i][2];
                     }
+                Console.WriteLine("Grid points successfully imported.");
                 }
             else
                 {
@@ -550,22 +575,26 @@ namespace BeamGageAutomation
             /**
             Run the main calibration program at the current position with the current setup.
             **/
+            Results = new double[IdealPositions.GetLength(0), 5];
             Aerotech.SetZero(); // Set reference at current position
             double SetLength = 0.1;
+            Console.WriteLine("==========================================================================");
+            Console.WriteLine("\nDetermining the coordinate transform between the camera sensor and the mechanical axes.");
             double[] BaseVectors = GetBaseCoordinates(SetLength);
             double[,] TransformMatrix = GetCoordinateTransform(BaseVectors, SetLength);
             double ScalingFactor = GetScalingFactor(BaseVectors, SetLength);
-            Console.WriteLine();
+            Console.WriteLine("==========================================================================");
+            Console.WriteLine("\nMeasuring reference position");
             double[] Reference = BeamGage.Measure(MeasureDuration);
-            Console.WriteLine();
             
             for (int i=0; i<IdealPositions.GetLength(0); i++)
-            {                
+            {
                 int IdxV = Indices[i,0];
                 int IdxU = Indices[i,1];
                 double UCoord = IdealPositions[i,0];
                 double VCoord = IdealPositions[i,1];
-                Console.WriteLine("IdxV = {0}, IdxU = {1}", IdxV, IdxU);
+                Console.WriteLine("==========================================================================\n");
+                Console.WriteLine("IdxV = {0}, IdxU = {1}", Indices[i,0], Indices[i,1]);
                 if (Convert.ToBoolean(Indices[i,2]))
                 {
                     // If current position is reference position don't measure again
@@ -574,7 +603,9 @@ namespace BeamGageAutomation
                     Results[i, 2] = Reference[2]*ScalingFactor;
                     Results[i, 3] = 1.0;
                     Results[i, 4] = Reference[4];
-                    Console.WriteLine("Reference position [mm]: dU = 0.00, dV = 0.00\n");
+                    Console.WriteLine("Reference position [mm]: dU = 0.00, dV = 0.00");
+                    Console.WriteLine("Reference diametre: D = {0:F5} mm", Results[i, 2]);
+                    Console.WriteLine("Ellipticity: e = {0:F5}\n", Results[i, 4]);
                     continue;
                 }
                 Aerotech.MoveToAbsXYUV(UCoord, VCoord);
@@ -583,8 +614,8 @@ namespace BeamGageAutomation
                 Position[1] = Position[1] - Reference[1];
                 double[] TransformedPosition = {Position[0], Position[1]};
                 TransformedPosition = Calculate2DCoordinateTransform(TransformedPosition, TransformMatrix); // Transform to machine coordinates
-                Results[i, 0] = TransformedPosition[0]; 
-                Results[i, 1] = TransformedPosition[1];
+                Results[i, 0] = Position[0]; //TransformedPosition[0]; 
+                Results[i, 1] = Position[1]; //TransformedPosition[1];
                 Results[i, 2] = Position[2] * ScalingFactor; // Diameter scaled to machine coordinates is an absolute measurement
                 Results[i, 3] = Position[3] / Reference[3]; // Intensity is a percentage of reference
                 Results[i, 4] = Position[4]; // Ellipticity
@@ -595,12 +626,14 @@ namespace BeamGageAutomation
                 Console.WriteLine("Ellipticity: e = {0:F5}\n", Results[i, 4]);
                 
             }
+            Console.WriteLine("==========================================================================");
             Aerotech.MoveToAbsXYUV(0,0);
             if (!CustomGridFlag)
             {
                 SaveGrid();
             }
             ShowResult(); // Print result matrix to console
+            Console.WriteLine("\n==========================================================================\n");
         }
         public void ShowResult()
         {
@@ -608,6 +641,7 @@ namespace BeamGageAutomation
             Writes the entries of the result matrix to their according positions in the console.
             U- and V-deviations of individual points are grouped together.
             **/
+            Console.WriteLine("Results:\n");
             Console.WriteLine("Row, Column, Zero, U_ideal [mm], V_ideal [mm], Deviation U [mm], Deviation V [mm], D_13.5%peak [mm], Relative peak intensity [-], Ellipticity [-]"); // Header
             for (int i=0; i<IdealPositions.GetLength(0); i++)
             {
@@ -632,7 +666,7 @@ namespace BeamGageAutomation
             double b = SetLength*X2/(X2*Y1-X1*Y2);
             double c = SetLength*Y1/(Y1*X2-Y2*X1);
             double d = SetLength*X1/(X1*Y2-X2*Y1);
-            Console.WriteLine("The transformation matrix is:");
+            Console.WriteLine("\nThe transformation matrix is:");
             Console.WriteLine("{0:F6}    {1:F6}", a, b);
             Console.WriteLine("{0:F6}    {1:F6}\n", c, d);
             return new double[,] {{a, b}, {c, d}};
@@ -677,7 +711,7 @@ namespace BeamGageAutomation
             double scaling2 = SetLength/(Math.Sqrt(Math.Pow(X2,2)+Math.Pow(Y2,2)));
 
             double scaling = (scaling1+scaling2)/2;
-            Console.WriteLine("Scaling factor is: {0}\n", scaling);
+            Console.WriteLine("\nThe scaling factor is: {0}\n", scaling);
             
             return scaling;
         }
@@ -705,12 +739,12 @@ namespace BeamGageAutomation
                     double UCoord = (IdxU-(NumU-1)/2)*DeltaU; // Measure positions in optical coordinates
                     double VCoord = ((NumV-1)/2-IdxV)*DeltaV;
 
-                    Indices[0, i+j] = IdxV; // Row
-                    Indices[1, i+j] = IdxU; // Column
-                    Indices[2, i+j] = Convert.ToInt16(IdxU==(NumU-1)/2 && IdxV==(NumV-1)/2); // Reference bool
+                    Indices[i*NumV+j, 0] = IdxV; // Row
+                    Indices[i*NumV+j, 1] = IdxU; // Column
+                    Indices[i*NumV+j, 2] = Convert.ToInt16(IdxU==(NumU-1)/2 && IdxV==(NumV-1)/2); // Reference bool
 
-                    IdealPositions[0, i+j] = UCoord; // U Coordinate
-                    IdealPositions[1, i+j] = VCoord; // V Coordinate
+                    IdealPositions[i*NumV+j, 0] = UCoord; // U Coordinate
+                    IdealPositions[i*NumV+j, 1] = VCoord; // V Coordinate
                 }
             }
             Console.WriteLine("New measurement grid created.\n");
@@ -751,6 +785,28 @@ namespace BeamGageAutomation
                     OutputFile.WriteLine("{0:D}, {1:D}, {2:D}, {3}, {4}, {5}, {6}, {7}, {8}",
                     Indices[i,0], Indices[i,1], Indices[i,2], IdealPositions[i, 0], IdealPositions[i, 1], Results[i, 0], Results[i, 1], Results[i, 2], Results[i, 3], Results[i,4]);
                 }
+            }
+        }
+        private void PrintArray(int[,] array)
+        {
+            for (int i=0; i<array.GetLength(0); i++)
+            {
+                for (int j=0; j<array.GetLength(1); j++)
+                {
+                    Console.Write("{0}\t", array[i,j]);
+                }
+                Console.Write("\n");
+            }
+        }
+        private void PrintArray(double[,] array)
+        {
+            for (int i=0; i<array.GetLength(0); i++)
+            {
+                for (int j=0; j<array.GetLength(1); j++)
+                {
+                    Console.Write("{0}\t", array[i,j]);
+                }
+                Console.Write("\n");
             }
         }
     }

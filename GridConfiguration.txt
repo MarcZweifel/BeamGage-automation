@@ -2,5 +2,5 @@
 <NumV = 3>
 <MillimeterDeltaU = 10.0>
 <MillimeterDeltaV = 10.0>
-<MillisecondsMeasureDuration = 5000>
+<MillisecondsMeasureDuration = 500>
 <CoordinatesFilePath = MeasureCoordinates.csv>
