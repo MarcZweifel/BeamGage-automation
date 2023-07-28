@@ -33,4 +33,13 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.CSharp" Version="4.7.0" />
   </ItemGroup>
+  <Target Name="CopyCustomContentOnPublish" AfterTargets="Publish">
+    <Copy SourceFiles="GridConfiguration.txt" DestinationFolder="$(PublishDir)" />
+  </Target>
+  <Target Name="CopyGridConfig" AfterTargets="Publish">
+    <Copy SourceFiles="GridConfiguration.txt" DestinationFolder="$(PublishDir)" />
+  </Target>
+  <Target Name="CopyBGConfig" AfterTargets="Publish">
+    <Copy SourceFiles="Automated Beam Gage.bgSetup" DestinationFolder="$(PublishDir)" />
+  </Target>
 </Project>

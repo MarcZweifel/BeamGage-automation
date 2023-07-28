@@ -3,3 +3,4 @@
 <MillimeterDeltaU = 10.0>
 <MillimeterDeltaV = 10.0>
 <MillisecondsMeasureDuration = 5000>
+<CoordinatesFilePath = MeasureCoordinates.csv>

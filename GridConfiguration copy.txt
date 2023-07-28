@@ -1,5 +1,0 @@
-<NumU = 65>
-<NumV = 65>
-<MillimeterDeltaU = 0.46875>
-<MillimeterDeltaV = 0.46875>
-<MillisecondsMeasureDuration = 10000>

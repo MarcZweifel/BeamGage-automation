@@ -33,7 +33,9 @@ namespace BeamGageAutomation
             string Filename = Console.ReadLine();
             Console.WriteLine("After completion, the CSV-file will be saved as " + Filename + ".csv on the desktop and can be imported to the Aerotech Calibration File Converter.\n" );
 
-            Console.WriteLine("The current location will be the zero point of the calibration.");
+            Console.WriteLine("The current location will be the zero point of the calibration grid.");
+            
+
             Console.WriteLine("Type start to start the calibration and cancel to terminate the program.");
             
             // Loop for command parsing
@@ -63,16 +65,14 @@ namespace BeamGageAutomation
             
             try
             {
-                CalibrationProgram Calibration = new CalibrationProgram(BGConnection, A3200Connection);
+                CalibrationProgram Calibration = new CalibrationProgram(BGConnection, A3200Connection);              
                 Calibration.RunProgram();
-                string FilenameAerotech = Filename + "_aerotech";
                 string FilenameCalFileMaker = Filename + "_CalibrationFileMaker";
                 string FilenameDataFile = Filename + "_Data";
                 string FilenameSystemConfiguration = Filename + "_SystemConfiguration";
-                Export.ToNmark(Calibration.Results, FilenameAerotech);
-                Export.ToCalibrationFileMaker(Calibration.Results, Calibration.IdealPositions, FilenameCalFileMaker);
-                Export.ToDatafile(Calibration.Results, Calibration.IdealPositions, FilenameDataFile);
-                Export.ToSystemConfiguration(A3200Connection, FilenameSystemConfiguration);
+                Calibration.ExportToCalibrationFileMaker(FilenameCalFileMaker);
+                Calibration.ExportDataFile(FilenameDataFile);
+                A3200Connection.ExprotSystemConfiguration(FilenameSystemConfiguration);
             }
             finally
             {
@@ -99,6 +99,7 @@ namespace BeamGageAutomation
         private List<double> ResultY = new List<double>();
         private List<double> ResultD = new List<double>();
         private List<double> ResultIntensity = new List<double>();
+        private List<double> ResultEllipticity = new List<double>();
 
         public void Connect()
         {
@@ -108,6 +109,7 @@ namespace BeamGageAutomation
             **/
             bgClient = new AutomatedBeamGage("ScannerCalibration", true);
             new AutomationFrameEvents(bgClient.ResultsPriorityFrame).OnNewFrame += OnFrameFunction; // Register callback function
+            bgClient.SaveLoadSetup.LoadSetup("Automated Beam Gage.bgSetup");
             Console.WriteLine("BeamGage connected.");
         }
         
@@ -122,10 +124,11 @@ namespace BeamGageAutomation
             {
                 ResultX.Add(bgClient.SpatialResults.PeakLocationX/1000); // in mm
                 ResultY.Add(bgClient.SpatialResults.PeakLocationY/1000);
-                //ResultD.Add(bgClient.SpatialResults.KnifeEdgeDiameter_16_84/1000); // in mm
-                ResultD.Add(bgClient.SpatialResults.MovingSlitMinor/1000); // in mm
+                ResultD.Add(bgClient.SpatialResults.D4SigmaDiameter/1000); // in mm
                 ResultIntensity.Add(bgClient.PowerEnergyResults.Peak); // in cts
+                ResultEllipticity.Add(bgClient.SpatialResults.Ellipticity); // [-]
             }
+            // TODO Implement measurement rejection using ellipticity and/or peak intensity threshold.
         }
 
         public void Disconnect()
@@ -146,15 +149,17 @@ namespace BeamGageAutomation
             MeasureOn = false;
             Console.WriteLine("Measurement ended.");
            
-            double[] Result = {ResultX.Average(), ResultY.Average(), ResultD.Average(), ResultIntensity.Average()};
+            double[] Result = {ResultX.Average(), ResultY.Average(), ResultD.Average(), ResultIntensity.Average(), ResultEllipticity.Average()};
             Console.WriteLine("Measured position: g = {0:F5} mm, h = {1:F5} mm", Result[0], Result[1]);
             Console.WriteLine("Measured diametre: {0:F5} mm", Result[2]);
-            Console.WriteLine("Measured peak intensity: {0:F5} cts", Result[2]);
+            Console.WriteLine("Measured peak intensity: {0:F5} cts", Result[3]);
+            Console.WriteLine("Measured ellipticity: {0:F5} cts", Result[4]);
             
             ResultX.Clear();
             ResultY.Clear();
             ResultD.Clear();
             ResultIntensity.Clear();
+            ResultEllipticity.Clear();
 
             return Result;
         }
@@ -167,32 +172,11 @@ namespace BeamGageAutomation
         **/
         private Controller controller; // Declare controller handle.
 
-        public int[] AxisIndicesUV {
-            get {return new int[] {
-                controller.Information.Axes["U"].Number,
-                controller.Information.Axes["V"].Number};
-                }
-        }
+        private int[] AxisIndicesUV;
+        private int[] ReverseMotionUV;
+        private double[] CountsPerUnitUV;
+        private int LensNumber;
 
-        public int[] ReverseMotionUV {
-            get {return new int[] {
-                controller.Parameters.Axes["U"].Motion.ReverseMotionDirection.Value, controller.Parameters.Axes["V"].Motion.ReverseMotionDirection.Value};
-                }
-        }
-
-        public double[] CountsPerUnitUV {
-            get {
-                return new double[] {
-                controller.Parameters.Axes["U"].Units.CountsPerUnit.Value,
-                controller.Parameters.Axes["V"].Units.CountsPerUnit.Value};
-                }
-        }
-
-        public int LensNumber {
-            get {
-                return Convert.ToInt16(controller.Variables.Global.Doubles["lens"].Value);
-            }
-        }
         public void Connect()
         {
             /**
@@ -211,6 +195,19 @@ namespace BeamGageAutomation
             controller = Controller.Connect(); // Connect after initialization
             controller.Commands.Motion.Enable(new string[] {"X", "Y", "U", "V"}); // Enable necessary axes.
             controller.Commands.Motion.Home(new string[] {"U", "V"}); // Home U and V
+            AxisIndicesUV = new int[] {
+                controller.Information.Axes["U"].Number,
+                controller.Information.Axes["V"].Number
+                };
+            ReverseMotionUV = new int[] {
+                controller.Parameters.Axes["U"].Motion.ReverseMotionDirection.Value,
+                controller.Parameters.Axes["V"].Motion.ReverseMotionDirection.Value
+                };
+            CountsPerUnitUV = new double[]{
+                controller.Parameters.Axes["U"].Units.CountsPerUnit.Value,
+                controller.Parameters.Axes["V"].Units.CountsPerUnit.Value
+                };
+            LensNumber = Convert.ToInt16(controller.Variables.Global.Doubles["lens"].Value);
             Console.WriteLine("Controller connected.");
         }
 
@@ -261,6 +258,27 @@ namespace BeamGageAutomation
         {
             controller.Commands.Motion.WaitForMotionDone(Aerotech.A3200.Commands.WaitOption.InPosition, axes);
         }
+        public void ExprotSystemConfiguration(string filename)
+        {
+            string DesktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop); // Always write to desktop
+            string path = DesktopPath + "\\" + filename + ".txt";
+            using(StreamWriter OutputFile = new StreamWriter(path))
+            {
+                OutputFile.WriteLine("XIndex = {0:D}; int", AxisIndicesUV[0]);
+                OutputFile.WriteLine("YIndex = {0:D}; int", AxisIndicesUV[1]);
+
+                OutputFile.WriteLine("XReverseMotion = {0:D}; bool", ReverseMotionUV[0]);
+                OutputFile.WriteLine("YReverseMotion = {0:D}; bool", ReverseMotionUV[1]);
+
+                OutputFile.WriteLine("XCountsPerUnit = {0}; float", CountsPerUnitUV[0]);
+                OutputFile.WriteLine("YCountsPerUnit = {0}; float", CountsPerUnitUV[1]);
+
+                OutputFile.WriteLine("Lens = {0:D}; int", LensNumber);
+
+                OutputFile.WriteLine("dX = {0}; float", CalibrationProgram.DeltaU);
+                OutputFile.WriteLine("dY = {0}; float", CalibrationProgram.DeltaV);
+            }
+        }
     }
 
     public class CalibrationProgram
@@ -268,22 +286,20 @@ namespace BeamGageAutomation
         /**
         Class which contains the functionality of the Aerotech measurement program.
         **/
-        public double [,,] Results; // Declare result matrix as public class property
+        public double [,] Results; // Declare result matrix as public class property
 
-        public double [,,] IdealPositions; // Declare matrix for ideal positions
+        public double [,] IdealPositions; // Declare matrix for ideal positions
         
+        private int[,] Indices;
 
         // Declare geometric variables as class properties
         private static int NumU;
         private static int NumV;
         public static double DeltaU;
         public static double DeltaV;
-
-
+        bool CustomGridFlag = false;
         // Declare measurement duration as class property
         private static int MeasureDuration;
-
-
         // Declare handles for program connectors
         private BeamGageConnector BeamGage;
         private A3200Connector Aerotech;
@@ -300,12 +316,90 @@ namespace BeamGageAutomation
             DeltaU = GetVariable<double>("MillimeterDeltaU", GridVariables);
             DeltaV = GetVariable<double>("MillimeterDeltaV", GridVariables);
             MeasureDuration = GetVariable<int>("MillisecondsMeasureDuration", GridVariables);
-            Results = new double[4, NumV, NumU];
-            IdealPositions = new double[2, NumV, NumU];
+
+            while(true)
+            {
+                Console.WriteLine("Generate new measurement grid? Answer 'yes' or 'no'.");
+                string answer = Console.ReadLine().ToLower();
+                if (answer == "yes")
+                {
+                    CreateGrid();
+                    break;
+                }
+
+                else if (answer == "no")
+                {
+                    CustomGridFlag = true;
+                    break;
+                }
+
+                else
+                {
+                    Console.WriteLine("Invalid command.");
+                }
+            }
+
+            if (CustomGridFlag)
+            {
+                while(true)
+                {
+                    Console.WriteLine("Import measurement coordinates from file path in GridConfiguration.txt? Type 'yes' or 'no'.");
+                    string answer = Console.ReadLine().ToLower();
+                    if (answer == "no")
+                    {
+                        try
+                        {
+                            GetSavedGrid("MeasureCoordinates.csv");
+                            break;
+                        }
+                        catch (FileNotFoundException)
+                        {
+                            CreateGrid();
+                            break;
+                        }
+                        catch (Exception ex) when (!(ex is FileNotFoundException))
+                        {
+                            Console.WriteLine("Something went wrong when improting the standard grid file. Check the formatting inside the file.");
+                        }
+
+                        
+                    }
+                    else if (answer == "yes")
+                    {
+                        try
+                        {
+                            string path = GetVariable<string>("CoordinatesFilePath", GridVariables);
+                            GetSavedGrid(path);
+                            break;
+                        }
+                        catch (FileNotFoundException)
+                        {
+                            Console.WriteLine("The file at the given path does not exist. Check if the path is correct and retry.");
+                            Console.ReadLine();
+                            GridVariables = GetGridVariables();
+
+                        }
+                        catch (Exception ex) when (!(ex is FileNotFoundException))
+                        {
+                            Console.WriteLine("Something went wrong during import of the coordinate list. Check if the formatting in the file is correct.");
+                            Console.ReadLine();
+                        }
+                    }
+                    else
+                    {
+                        Console.WriteLine("Invalid command.");
+                    }
+                }
+            }
+
+            else
+            {
+                CreateGrid();
+            }
+            
             Aerotech = AerotechConnector;
             BeamGage = BeamGageConnector;
         }
-
         private string[,] GetGridVariables()
         {
             /**
@@ -354,7 +448,53 @@ namespace BeamGageAutomation
             }
             return result;
         }
-    
+        private void GetSavedGrid(string filepath)
+        {
+            if (File.Exists(filepath))
+                {
+                    List<double[]> PositionList = new List<double[]>();
+                    List<int[]> IndexList = new List<int[]>();
+                    using(StreamReader InputFile = new StreamReader("MeasureCoordinates.csv"))
+                    {
+                        InputFile.ReadLine(); // Remove header
+                        string line;
+                        while((line = InputFile.ReadLine()) != null)
+                        {
+                            if (String.IsNullOrWhiteSpace(line))
+                            {
+                                continue;
+                            }
+                            string[] temp = line.Split(',');
+                            for (int i=0; i<temp.Length; i++)
+                            {
+                                temp[i].Trim();
+                            }
+                            double[] Position = new double[2];
+                            int[] Index = new int[3];
+                            Index[0] = Convert.ToInt16(temp[0]);
+                            Index[1] = Convert.ToInt16(temp[1]);
+                            Index[2] = Convert.ToInt16(temp[2]);
+                            Position[0] = Convert.ToDouble(temp[3]);
+                            Position[1] = Convert.ToDouble(temp[4]);
+                            PositionList.Add(Position);
+                            IndexList.Add(Index);
+                        }
+                    }
+                    for (int i=0; i<PositionList.Capacity; i++)
+                    {
+                        IdealPositions[i,0] = PositionList[i][0];
+                        IdealPositions[i,1] = PositionList[i][1];
+
+                        Indices[i,0] = IndexList[i][0];
+                        Indices[i,1] = IndexList[i][1];
+                        Indices[i,2] = IndexList[i][2];
+                    }
+                }
+            else
+                {
+                    throw new FileNotFoundException();
+                }
+        }
         private dynamic GetVariable<T>(string name, string[,] variables)
         {
             /**
@@ -393,7 +533,18 @@ namespace BeamGageAutomation
                 return value;
             }
         }
-        
+        private void SaveGrid()
+        {
+            string path = "MeasureCoordinates.csv";
+            using(StreamWriter OutputFile = new StreamWriter(path))
+            {
+                OutputFile.WriteLine("Row, Column, Zero, U-Coordinate [mm], V-Coordinate [mm]");
+                for (int i=0; i<IdealPositions.GetLength(0); i++)
+                {
+                    OutputFile.WriteLine("{0}, {1}, {2}, {3}, {4}", Indices[i,0], Indices[i,1], Indices[i,2], IdealPositions[i,0], IdealPositions[i,1]);
+                }
+            }
+        }
         public void RunProgram()
         {
             /**
@@ -404,84 +555,66 @@ namespace BeamGageAutomation
             double[] BaseVectors = GetBaseCoordinates(SetLength);
             double[,] TransformMatrix = GetCoordinateTransform(BaseVectors, SetLength);
             double ScalingFactor = GetScalingFactor(BaseVectors, SetLength);
-            Console.WriteLine("The transformation matrix is:");
-            Console.WriteLine("{0:F6}    {1:F6}", TransformMatrix[0,0], TransformMatrix[0,1]);
-            Console.WriteLine("{0:F6}    {1:F6}", TransformMatrix[1,0], TransformMatrix[1,1]);
             Console.WriteLine();
             double[] Reference = BeamGage.Measure(MeasureDuration);
             Console.WriteLine();
             
-            for (int i=0; i<NumV; i++)
-            {
-                for (int j=0; j<NumU; j++)
+            for (int i=0; i<IdealPositions.GetLength(0); i++)
+            {                
+                int IdxV = Indices[i,0];
+                int IdxU = Indices[i,1];
+                double UCoord = IdealPositions[i,0];
+                double VCoord = IdealPositions[i,1];
+                Console.WriteLine("IdxV = {0}, IdxU = {1}", IdxV, IdxU);
+                if (Convert.ToBoolean(Indices[i,2]))
                 {
-                    // Go through all the measurement positions from top to bottom. Left to right in a zig-zag-pattern.                    
-                    int IdxU;
-                    if (i%2==0) // Every even row is from left to right
-                    {
-                        IdxU = j;
-                    }
-                    else // Every odd row is from right to left
-                    {
-                        IdxU = NumU-1-j;
-                    }
-                    
-                    int IdxV = i; // All rows from top to bottom
-                    Console.WriteLine("IdxV = {0}, IdxU = {1}", IdxV, IdxU);
-                    if (IdxU==(NumU-1)/2 && IdxV==(NumV-1)/2)
-                    {
-                        // If current position is reference position don't measure again
-                        Results[0, IdxV, IdxU] = 0.0;
-                        Results[1, IdxV, IdxU] = 0.0;
-                        Console.WriteLine("Reference position [mm]: dU = 0.00, dV = 0.00\n");
-                        continue;
-                    }
-                    
-                    double UCoord = (IdxU-(NumU-1)/2)*DeltaU; // Measure positions in optical coordinates
-                    double VCoord = ((NumV-1)/2-IdxV)*DeltaV;
-
-                    IdealPositions[0, IdxV, IdxU] = UCoord;
-                    IdealPositions[1, IdxV, IdxU] = VCoord;
-
-                    Aerotech.MoveToAbsXYUV(UCoord, VCoord);
-
-                    double[] Position = BeamGage.Measure(MeasureDuration); // Execute measurement, MeasureDuration in milliseconds
-                    Position[0] = Position[0] - Reference[0]; // Measurement position result relative to reference
-                    Position[1] = Position[1] - Reference[1];
-
-                    double[] TransformedPosition = {Position[0], Position[1]};
-                    TransformedPosition = Calculate2DCoordinateTransform(TransformedPosition, TransformMatrix); // Transform to machine coordinates
-
-                    Results[0, IdxV, IdxU] = TransformedPosition[0]; 
-                    Results[1, IdxV, IdxU] = TransformedPosition[1];
-                    Results[2, IdxV, IdxU] = Position[2] * ScalingFactor; // Diameter scaled to machine coordinates is an absolute measurement
-                    Results[3, IdxV, IdxU] = Position[3] / Reference[3]; // Intensity is a percentage of reference
-                    Console.WriteLine("\nDeviation: dU = {0:F5} mm, dV = {1:F5} mm", Results[0, IdxV, IdxU], Results[1, IdxV, IdxU]);
-                    Console.WriteLine("Diametre: D = {0:F5} mm", Results[2, IdxV, IdxU]);
-                    Console.WriteLine("Relative Peak Intensity: I = {0:F5}\n", Results[3, IdxV, IdxU]);
+                    // If current position is reference position don't measure again
+                    Results[i, 0] = 0.0;
+                    Results[i, 1] = 0.0;
+                    Results[i, 2] = Reference[2]*ScalingFactor;
+                    Results[i, 3] = 1.0;
+                    Results[i, 4] = Reference[4];
+                    Console.WriteLine("Reference position [mm]: dU = 0.00, dV = 0.00\n");
+                    continue;
                 }
+                Aerotech.MoveToAbsXYUV(UCoord, VCoord);
+                double[] Position = BeamGage.Measure(MeasureDuration); // Execute measurement, MeasureDuration in milliseconds
+                Position[0] = Position[0] - Reference[0]; // Measurement position result relative to reference
+                Position[1] = Position[1] - Reference[1];
+                double[] TransformedPosition = {Position[0], Position[1]};
+                TransformedPosition = Calculate2DCoordinateTransform(TransformedPosition, TransformMatrix); // Transform to machine coordinates
+                Results[i, 0] = TransformedPosition[0]; 
+                Results[i, 1] = TransformedPosition[1];
+                Results[i, 2] = Position[2] * ScalingFactor; // Diameter scaled to machine coordinates is an absolute measurement
+                Results[i, 3] = Position[3] / Reference[3]; // Intensity is a percentage of reference
+                Results[i, 4] = Position[4]; // Ellipticity
+                // Printing
+                Console.WriteLine("Deviation: dU = {0:F5} mm, dV = {1:F5} mm", Results[i, 0], Results[i, 1]);
+                Console.WriteLine("Diametre: D = {0:F5} mm", Results[i, 2]);
+                Console.WriteLine("Relative Peak Intensity: I = {0:F5}", Results[i, 3]);
+                Console.WriteLine("Ellipticity: e = {0:F5}\n", Results[i, 4]);
+                
             }
             Aerotech.MoveToAbsXYUV(0,0);
+            if (!CustomGridFlag)
+            {
+                SaveGrid();
+            }
             ShowResult(); // Print result matrix to console
         }
-    
         public void ShowResult()
         {
             /**
             Writes the entries of the result matrix to their according positions in the console.
             U- and V-deviations of individual points are grouped together.
             **/
-            Console.WriteLine("Deviation results in mm:\n");
-            for (int i=0; i<NumV; i++)
+            Console.WriteLine("Row, Column, Zero, U_ideal [mm], V_ideal [mm], Deviation U [mm], Deviation V [mm], D_13.5%peak [mm], Relative peak intensity [-], Ellipticity [-]"); // Header
+            for (int i=0; i<IdealPositions.GetLength(0); i++)
             {
-                for (int j=0; j<NumU; j++)
-                {
-                    Console.Write("({0:F5}, {1:F5})\t", Results[0,i,j], Results[1,i,j]);
-                }
-                Console.Write("\n\n");
+                Console.WriteLine("{0:D}, {1:D}, {2:D}, {3}, {4}, {5}, {6}, {7}, {8}",
+                Indices[i,0], Indices[i,1], Indices[i,2], IdealPositions[i, 0], IdealPositions[i, 1], Results[i, 0], Results[i, 1], Results[i, 2], Results[i, 3], Results[i,4]);
             }
         }
-
         private double[,] GetCoordinateTransform(double[] BaseVectors, double SetLength)
         {
             /**
@@ -501,7 +634,7 @@ namespace BeamGageAutomation
             double d = SetLength*X1/(X1*Y2-X2*Y1);
             Console.WriteLine("The transformation matrix is:");
             Console.WriteLine("{0:F6}    {1:F6}", a, b);
-            Console.WriteLine("{0:F6}    {1:F6}", c, d);
+            Console.WriteLine("{0:F6}    {1:F6}\n", c, d);
             return new double[,] {{a, b}, {c, d}};
 
         }
@@ -512,7 +645,6 @@ namespace BeamGageAutomation
             TransformedVector[1] = Matrix[1,0]*Vector[0]+Matrix[1,1]*Vector[1];
             return TransformedVector;
         }
-
         private double[] GetBaseCoordinates(double SetLength)
         {
             /**
@@ -543,118 +675,83 @@ namespace BeamGageAutomation
             double Y2 = BaseVectors[3];
             double scaling1 = SetLength/(Math.Sqrt(Math.Pow(X1,2)+Math.Pow(Y1,2)));
             double scaling2 = SetLength/(Math.Sqrt(Math.Pow(X2,2)+Math.Pow(Y2,2)));
+
+            double scaling = (scaling1+scaling2)/2;
+            Console.WriteLine("Scaling factor is: {0}\n", scaling);
             
-            return (scaling1+scaling2)/2;
+            return scaling;
         }
-    }
-
-    public static class Export
-    {
-        /**
-        Class to export to different parsing systems using different formatting.
-        Exports always to the desktop.
-        **/
-        private static string DesktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop); // Always write to desktop
-        public static void ToNmark(double[,,] Deviations, string filename)
+        private void CreateGrid()
         {
-            /**
-            Exports to a csv file in aerotech formatting to create a .gcal file with the Aerotech Galvo Calibration File Converter.
-            **/
-            string path = DesktopPath + "\\" + filename + ".csv";
-            using (StreamWriter OutputFile = new StreamWriter(path))
+            IdealPositions = new double[NumU*NumV, 2];
+            Indices = new int[NumU*NumV, 3];
+            for (int i=0; i<NumV; i++)
             {
-                int NumU = Deviations.GetLength(2);
-                int NumV = Deviations.GetLength(1);
-
-                for (int i=NumV-1; i>=0; i--) // Go through grid from bottom to top
+                for (int j=0; j<NumU; j++)
                 {
-                    for (int j=0; j<NumU; j++) // Go through grid from left to right
+                    // Go through all the measurement positions from top to bottom. Left to right in a zig-zag-pattern.                    
+                    int IdxU;
+                    if (i%2==0) // Every even row is from left to right
                     {
-                        if (j<NumU-1)
-                        {
-                            OutputFile.Write("\"{0:F5},{1:F5},0.00000\",",-Deviations[0,i,j], -Deviations[1,i,j]);
-                        }
-                        else
-                        {
-                            OutputFile.Write("\"{0:F5},{1:F5},0.00000\"\n",-Deviations[0,i,j], -Deviations[1,i,j]); // Last entry of line
-                        }
+                        IdxU = j;
                     }
+                    else // Every odd row is from right to left
+                    {
+                        IdxU = NumU-1-j;
+                    }
+                    
+                    int IdxV = i; // All rows from top to bottom
+                    
+                    double UCoord = (IdxU-(NumU-1)/2)*DeltaU; // Measure positions in optical coordinates
+                    double VCoord = ((NumV-1)/2-IdxV)*DeltaV;
+
+                    Indices[0, i+j] = IdxV; // Row
+                    Indices[1, i+j] = IdxU; // Column
+                    Indices[2, i+j] = Convert.ToInt16(IdxU==(NumU-1)/2 && IdxV==(NumV-1)/2); // Reference bool
+
+                    IdealPositions[0, i+j] = UCoord; // U Coordinate
+                    IdealPositions[1, i+j] = VCoord; // V Coordinate
                 }
             }
+            Console.WriteLine("New measurement grid created.\n");
         }
-
-        public static void ToCalibrationFileMaker(double[,,] Deviations, double[,,] Ideal, string filename)
+        public void ExportToCalibrationFileMaker(string filename)
         {
             /**
             Exports a csv file using the Intersection finder formatting to use the Calibration File Maker for inter- and extrapolation.
             **/
+            string DesktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop); // Always write to desktop
             string path = DesktopPath + "\\" + filename + ".csv";
             using(StreamWriter OutputFile = new StreamWriter(path))
             {
-                int NumU = Deviations.GetLength(2);
-                int NumV = Deviations.GetLength(1);
-
                 OutputFile.WriteLine("1.0"); // Resolution placeholder
                 OutputFile.WriteLine("row, column, zero point, Min, Max, X, Y"); // Header
 
-                for (int i=0; i<NumV; i++)
+                for (int i=0; i<IdealPositions.GetLength(0); i++)
                 {
-                    for (int j=0; j<NumU; j++)
-                    {
-                        OutputFile.WriteLine(
-                            "{0:F1},{1:F1},{2:F1},0.0,0.0,{3},{4}",
-                            i,
-                            j,
-                            Convert.ToDouble(i==(NumV-1)/2&&j==(NumU-1)/2),
-                            Ideal[0,i,j]+Deviations[0,i,j],
-                            -Ideal[1,i,j]-Deviations[1,i,j]);
+                    OutputFile.WriteLine(
+                        "{0},{1},{2},0.0,0.0,{3},{4}",
+                        Indices[i,0],
+                        Indices[i,1],
+                        Indices[i,2],
+                        IdealPositions[i, 0]+Results[i, 0],
+                        -IdealPositions[i, 1]-Results[i, 1]);
                     }
                 }
             }
-        }
-
-        public static void ToDatafile(double[,,] Results, double[,,] Ideal, string filename)
+        public void ExportDataFile(string filename)
         {
+            string DesktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop); // Always write to desktop
             string path = DesktopPath + "\\" + filename + ".csv";
             using(StreamWriter OutputFile = new StreamWriter(path))
             {
-                int NumU = Results.GetLength(2);
-                int NumV = Results.GetLength(1);
-
-                OutputFile.WriteLine("Row, Column, U_ideal [mm], V_ideal [mm], Deviation U [mm], Deviation V [mm], D_13.5%peak [mm], Relative peak intensity [-]"); // Header
-
-                for (int i=0; i<NumV; i++)
+                OutputFile.WriteLine("Row, Column, Zero, U_ideal [mm], V_ideal [mm], Deviation U [mm], Deviation V [mm], D_13.5%peak [mm], Relative peak intensity [-], Ellipticity [-]"); // Header
+                for (int i=0; i<IdealPositions.GetLength(0); i++)
                 {
-                    for (int j=0; j<NumU; j++)
-                    {
-                        OutputFile.WriteLine("{0:D}, {1:D}, {2}, {3}, {4}, {5}, {6}, {7}",
-                        i, j, Ideal[0,i,j], Ideal[1,i,j], Results[0,i,j], Results[1,i,j], Results[2,i,j], Results[3,i,j]);
-                    }
+                    OutputFile.WriteLine("{0:D}, {1:D}, {2:D}, {3}, {4}, {5}, {6}, {7}, {8}",
+                    Indices[i,0], Indices[i,1], Indices[i,2], IdealPositions[i, 0], IdealPositions[i, 1], Results[i, 0], Results[i, 1], Results[i, 2], Results[i, 3], Results[i,4]);
                 }
             }
         }
-
-        public static void ToSystemConfiguration(A3200Connector AerotechConnector, string filename)
-        {
-            string path = DesktopPath + "\\" + filename + ".csv";
-            using(StreamWriter OutputFile = new StreamWriter(path))
-            {
-                OutputFile.WriteLine("XIndex = {0:D}; int", AerotechConnector.AxisIndicesUV[0]);
-                OutputFile.WriteLine("YIndex = {0:D}; int", AerotechConnector.AxisIndicesUV[1]);
-
-                OutputFile.WriteLine("XReverseMotion = {0:D}; bool", AerotechConnector.ReverseMotionUV[0]);
-                OutputFile.WriteLine("YReverseMotion = {0:D}; bool", AerotechConnector.ReverseMotionUV[1]);
-
-                OutputFile.WriteLine("XCountsPerUnit = {0}; float", AerotechConnector.CountsPerUnitUV[0]);
-                OutputFile.WriteLine("YCountsPerUnit = {0]; float", AerotechConnector.CountsPerUnitUV[1]);
-
-                OutputFile.WriteLine("Lens = {0:D}; int", AerotechConnector.LensNumber);
-
-                OutputFile.WriteLine("dX = {0}; float", CalibrationProgram.DeltaU);
-                OutputFile.WriteLine("dY = {0}; float", CalibrationProgram.DeltaV);
-            }
-        }
-
-        
     }
 }
