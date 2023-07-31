@@ -493,9 +493,9 @@ namespace BeamGageAutomation
                             }
                             double[] Position = new double[2];
                             int[] Index = new int[3];
-                            Index[0] = Convert.ToInt16(temp[0]);
-                            Index[1] = Convert.ToInt16(temp[1]);
-                            Index[2] = Convert.ToInt16(temp[2]);
+                            Index[0] = Convert.ToInt16(Convert.ToDouble(temp[0]));
+                            Index[1] = Convert.ToInt16(Convert.ToDouble(temp[1]));
+                            Index[2] = Convert.ToInt16(Convert.ToDouble(temp[2]));
                             Position[0] = Convert.ToDouble(temp[3]);
                             Position[1] = Convert.ToDouble(temp[4]);
                             PositionList.Add(Position);
@@ -614,8 +614,8 @@ namespace BeamGageAutomation
                 Position[1] = Position[1] - Reference[1];
                 double[] TransformedPosition = {Position[0], Position[1]};
                 TransformedPosition = Calculate2DCoordinateTransform(TransformedPosition, TransformMatrix); // Transform to machine coordinates
-                Results[i, 0] = Position[0]; //TransformedPosition[0]; 
-                Results[i, 1] = Position[1]; //TransformedPosition[1];
+                Results[i, 0] = TransformedPosition[0]; 
+                Results[i, 1] = TransformedPosition[1];
                 Results[i, 2] = Position[2] * ScalingFactor; // Diameter scaled to machine coordinates is an absolute measurement
                 Results[i, 3] = Position[3] / Reference[3]; // Intensity is a percentage of reference
                 Results[i, 4] = Position[4]; // Ellipticity
