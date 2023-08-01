@@ -124,8 +124,8 @@ namespace BeamGageAutomation
             // Data collection switch is on -> Add centroid coordinates of the new frame to the results list.
             if (MeasureOn)
             {
-                ResultX.Add(bgClient.SpatialResults.PeakLocationX/1000); // in mm
-                ResultY.Add(bgClient.SpatialResults.PeakLocationY/1000);
+                ResultX.Add(bgClient.SpatialResults.CentroidX/1000); // in mm
+                ResultY.Add(bgClient.SpatialResults.CentroidY/1000);
                 ResultD.Add(bgClient.SpatialResults.D4SigmaDiameter/1000); // in mm
                 ResultIntensity.Add(bgClient.PowerEnergyResults.Peak); // in cts
                 ResultEllipticity.Add(bgClient.SpatialResults.Ellipticity); // [-]
