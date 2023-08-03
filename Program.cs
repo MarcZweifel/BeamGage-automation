@@ -739,12 +739,12 @@ namespace BeamGageAutomation
                     double UCoord = (IdxU-(NumU-1)/2)*DeltaU; // Measure positions in optical coordinates
                     double VCoord = ((NumV-1)/2-IdxV)*DeltaV;
 
-                    Indices[i*NumV+j, 0] = IdxV; // Row
-                    Indices[i*NumV+j, 1] = IdxU; // Column
-                    Indices[i*NumV+j, 2] = Convert.ToInt16(IdxU==(NumU-1)/2 && IdxV==(NumV-1)/2); // Reference bool
+                    Indices[i*NumU+j, 0] = IdxV; // Row
+                    Indices[i*NumU+j, 1] = IdxU; // Column
+                    Indices[i*NumU+j, 2] = Convert.ToInt16(IdxU==(NumU-1)/2 && IdxV==(NumV-1)/2); // Reference bool
 
-                    IdealPositions[i*NumV+j, 0] = UCoord; // U Coordinate
-                    IdealPositions[i*NumV+j, 1] = VCoord; // V Coordinate
+                    IdealPositions[i*NumU+j, 0] = UCoord; // U Coordinate
+                    IdealPositions[i*NumU+j, 1] = VCoord; // V Coordinate
                 }
             }
             Console.WriteLine("New measurement grid created.\n");
@@ -782,7 +782,7 @@ namespace BeamGageAutomation
                 OutputFile.WriteLine("Row, Column, Zero, U_ideal [mm], V_ideal [mm], Deviation U [mm], Deviation V [mm], D_13.5%peak [mm], Relative peak intensity [-], Ellipticity [-]"); // Header
                 for (int i=0; i<IdealPositions.GetLength(0); i++)
                 {
-                    OutputFile.WriteLine("{0:D}, {1:D}, {2:D}, {3}, {4}, {5}, {6}, {7}, {8}",
+                    OutputFile.WriteLine("{0:D}, {1:D}, {2:D}, {3}, {4}, {5}, {6}, {7}, {8}, {9}",
                     Indices[i,0], Indices[i,1], Indices[i,2], IdealPositions[i, 0], IdealPositions[i, 1], Results[i, 0], Results[i, 1], Results[i, 2], Results[i, 3], Results[i,4]);
                 }
             }
